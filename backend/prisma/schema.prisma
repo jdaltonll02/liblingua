@@ -1,0 +1,337 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Domain {
+  general
+  health
+  legal
+  education
+  news
+  conversational
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+enum AgeGroup {
+  under_18
+  age_18_35   @map("18_35")
+  age_36_55   @map("36_55")
+  age_56_plus @map("56_plus")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  ANALYST
+  CONTRIBUTOR
+}
+
+enum DonationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum DonationProvider {
+  STRIPE
+  MTN_MOMO
+}
+
+enum CampaignStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TicketCategory {
+  GENERAL
+  TECHNICAL
+  TRANSLATION_QUALITY
+  ACCOUNT
+  DATA_REQUEST
+  FUNDING
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Language {
+  id         String   @id @default(uuid())
+  value      String   @unique
+  label      String
+  is_active  Boolean  @default(true)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now())
+
+  @@map("languages")
+}
+
+model EnglishSample {
+  id                String        @id @default(uuid())
+  text              String
+  audio_path        String?
+  domain            Domain
+  difficulty        Difficulty
+  translation_count Int           @default(0)
+  is_locked         Boolean       @default(false)
+  is_gold_standard  Boolean       @default(false)
+  iaa_score         Float?        // inter-annotator agreement (0-1), set when locked
+  created_at        DateTime      @default(now())
+
+  translations   Translation[]
+  gold_standards GoldStandard[]
+
+  @@index([domain])
+  @@index([is_locked])
+  @@index([is_gold_standard])
+  @@map("english_samples")
+}
+
+model Translation {
+  id              String         @id @default(uuid())
+  sample_id       String
+  contributor_id  String
+  target_language String
+  dialect         String?
+  translated_text String
+  audio_path           String?
+  english_audio_path   String?
+  is_validated    Boolean        @default(false)
+  quality_score   Float?
+  gold_sim_score  Float?
+  created_at      DateTime       @default(now())
+
+  sample      EnglishSample @relation(fields: [sample_id], references: [id])
+  contributor Contributor   @relation(fields: [contributor_id], references: [id])
+
+  @@unique([sample_id, contributor_id, target_language])
+  @@index([sample_id, target_language])
+  @@index([contributor_id])
+  @@map("translations")
+}
+
+model Contributor {
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  password_hash    String?   // null for SSO-only accounts
+  native_language  String?   // null until profile is complete
+  native_dialect   String?
+  region_of_origin String?   // null until profile is complete
+  age_group        AgeGroup? // null until profile is complete
+  is_l1_speaker    Boolean?  // null until profile is complete
+  reputation_score Float     @default(1.0)
+  is_admin         Boolean   @default(false)
+  role             Role      @default(CONTRIBUTOR)
+  is_active        Boolean   @default(true)
+
+  // Email verification
+  email_verified       Boolean   @default(false)
+  verification_token   String?   @unique
+  verification_sent_at DateTime?
+
+  // OAuth / SSO
+  google_id        String? @unique
+  github_id        String? @unique
+  oauth_provider   String? // 'google' | 'github' | null (password)
+
+  // Profile completeness flag (SSO users must fill profile before translating)
+  is_profile_complete Boolean @default(false)
+
+  // Two-factor authentication (TOTP)
+  totp_secret   String?  // base32 secret, null when 2FA not set up
+  totp_enabled  Boolean  @default(false)
+
+  // Pending email change (new address stored here until link is clicked)
+  pending_email String?
+
+  // Password reset
+  reset_token            String?   @unique
+  reset_token_expires_at DateTime?
+
+  // Public profile
+  photo_url  String?
+  profession String?
+
+  created_at DateTime @default(now())
+
+  translations    Translation[]
+  apiKeys         ApiKey[]
+  auditLogs       AuditLog[]       @relation("ActorAuditLogs")
+  supportTickets  SupportTicket[]
+  badges          ContributorBadge[]
+  campaignsCreated Campaign[]
+
+  @@map("contributors")
+}
+
+model ContributorBadge {
+  id             String      @id @default(uuid())
+  contributor_id String
+  slug           String      // e.g. 'first_translation', 'streak_7', 'translations_50'
+  awarded_at     DateTime    @default(now())
+
+  contributor Contributor @relation(fields: [contributor_id], references: [id], onDelete: Cascade)
+
+  @@unique([contributor_id, slug])
+  @@index([contributor_id])
+  @@map("contributor_badges")
+}
+
+model Campaign {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  language    String
+  domain      Domain?
+  goal        Int
+  progress    Int            @default(0)  // cached count, updated on translation submit
+  status      CampaignStatus @default(UPCOMING)
+  start_date  DateTime
+  end_date    DateTime
+  badge_slug  String?        // badge awarded to contributors who reach personal goal
+  created_by  String
+  is_active   Boolean        @default(true)
+  created_at  DateTime       @default(now())
+
+  creator Contributor @relation(fields: [created_by], references: [id])
+
+  @@index([language])
+  @@index([status])
+  @@index([is_active])
+  @@map("campaigns")
+}
+
+model Donation {
+  id             String           @id @default(uuid())
+  donor_name     String?
+  donor_email    String?
+  amount         Float
+  currency       String           @default("USD")
+  provider       DonationProvider
+  status         DonationStatus   @default(PENDING)
+  provider_ref   String?          @unique  // Stripe session/intent ID or MTN reference ID
+  transaction_id String?          @unique  // set on completion
+  message        String?
+  is_anonymous   Boolean          @default(false)
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  @@index([status])
+  @@index([provider])
+  @@index([created_at])
+  @@map("donations")
+}
+
+model SupportTicket {
+  id             String         @id @default(uuid())
+  name           String
+  email          String
+  subject        String
+  category       TicketCategory @default(GENERAL)
+  message        String
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(NORMAL)
+  contributor_id String?
+  response       String?
+  resolved_at    DateTime?
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+
+  contributor Contributor? @relation(fields: [contributor_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([category])
+  @@index([email])
+  @@map("support_tickets")
+}
+
+model ApiKey {
+  id             String      @id @default(uuid())
+  key_hash       String      @unique
+  prefix         String
+  name           String
+  contributor_id String
+  last_used_at   DateTime?
+  is_active      Boolean     @default(true)
+  created_at     DateTime    @default(now())
+
+  contributor Contributor @relation(fields: [contributor_id], references: [id])
+
+  @@index([contributor_id])
+  @@map("api_keys")
+}
+
+model DatasetPublication {
+  id              String   @id @default(uuid())
+  language        String   @unique
+  is_active       Boolean  @default(true)
+  record_count    Int      @default(0)   // validated translation count
+  audio_count     Int      @default(0)   // translations with spoken recordings
+  text_only_count Int      @default(0)   // translations without audio
+  avg_quality     Float?                  // mean quality_score of validated set
+  domain_dist     Json?                   // { health: N, legal: N, … }
+  version         Int      @default(1)   // bumped each time the dataset is re-published
+  published_at    DateTime @default(now())
+  published_by    String
+
+  @@map("dataset_publications")
+}
+
+model GoldStandard {
+  id                    String   @id @default(uuid())
+  sample_id             String
+  target_language       String
+  reference_translation String
+  created_by            String
+  created_at            DateTime @default(now())
+
+  sample EnglishSample @relation(fields: [sample_id], references: [id])
+
+  @@index([sample_id, target_language])
+  @@map("gold_standard")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  action        String   // user_created, user_updated, user_deleted, user_deactivated, user_activated, role_changed, etc.
+  actor_id      String   // admin who performed action
+  target_id     String?  // user affected (null for system actions)
+  resource_type String   // User, Translation, etc.
+  changes       Json?    // { field: { old, new } }
+  ip_address    String?
+  created_at    DateTime @default(now())
+
+  actor Contributor @relation("ActorAuditLogs", fields: [actor_id], references: [id], onDelete: Cascade)
+
+  @@index([actor_id])
+  @@index([target_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}

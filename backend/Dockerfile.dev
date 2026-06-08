@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# OpenSSL is required by the Prisma query engine on Alpine
+RUN apk add --no-cache openssl
+
+# Install ALL deps including nodemon and prisma CLI
+COPY package*.json ./
+RUN npm install
+
+# Generate Prisma client (schema mounted as volume at runtime)
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+COPY jest.config.js jest.setup.js ./
+COPY __mocks__ ./__mocks__/
+# Source is mounted as a volume by docker-compose.dev.yml for hot-reload
+EXPOSE 4000
