@@ -1,14 +1,12 @@
 services:
-  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  # ── PostgreSQL (skipped when DATABASE_URL points to an external DB) ───────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-lmd_db}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-lmd_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,22 +20,44 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-lmd_db}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      NODE_ENV: ${NODE_ENV:-production}
-      PORT: 4000
-      BACKEND_ROOT: /app
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-noreply@liblingua.org}
-      AWS_REGION: ${AWS_REGION:-}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      # If DATABASE_URL is set in .env it is used directly (external DB, e.g. Neon).
+      # Otherwise the Docker-internal postgres container is used.
+      DATABASE_URL:          ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-lmd_db}}
+      FRONTEND_URL:          ${FRONTEND_URL:-http://localhost:3000}
+      OAUTH_CALLBACK_BASE:   ${OAUTH_CALLBACK_BASE:-http://localhost:4000}
+      JWT_SECRET:            ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN:        ${JWT_EXPIRES_IN:-7d}
+      NODE_ENV:              ${NODE_ENV:-production}
+      PORT:                  4000
+      BACKEND_ROOT:          /app
+      # Email
+      SMTP_HOST:             ${SMTP_HOST:-}
+      SMTP_PORT:             ${SMTP_PORT:-587}
+      SMTP_USER:             ${SMTP_USER:-}
+      SMTP_PASS:             ${SMTP_PASS:-}
+      SMTP_FROM:             ${SMTP_FROM:-noreply@liblingua.org}
+      # OAuth
+      GOOGLE_CLIENT_ID:      ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET:  ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID:      ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET:  ${GITHUB_CLIENT_SECRET:-}
+      # AWS S3
+      AWS_REGION:            ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      LOG_DIR: /app/logs
+      AWS_S3_BUCKET:         ${AWS_S3_BUCKET:-}
+      # Payments
+      STRIPE_SECRET_KEY:     ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      MTN_MOMO_SUBSCRIPTION_KEY: ${MTN_MOMO_SUBSCRIPTION_KEY:-}
+      MTN_MOMO_API_USER:     ${MTN_MOMO_API_USER:-}
+      MTN_MOMO_API_KEY:      ${MTN_MOMO_API_KEY:-}
+      MTN_MOMO_ENVIRONMENT:  ${MTN_MOMO_ENVIRONMENT:-sandbox}
+      MTN_MOMO_BASE_URL:     ${MTN_MOMO_BASE_URL:-https://sandbox.momodeveloper.mtn.com}
+      # Seed
+      SEED_ADMIN_EMAIL:      ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD:   ${SEED_ADMIN_PASSWORD:-changeme123}
+      LOG_DIR:               /app/logs
     ports:
       - '4000:4000'
     depends_on:
@@ -46,7 +66,7 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - ./logs:/app/logs
-      - ./scripts:/scripts    # seed script
+      - ./scripts:/scripts
 
   # ── Frontend (nginx serving built React app + reverse proxy for /api) ────────
   frontend:
