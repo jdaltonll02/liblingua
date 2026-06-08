@@ -1,20 +1,4 @@
 services:
-  # ── PostgreSQL (skipped when DATABASE_URL points to an external DB) ───────────
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-lmd_db}
-      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   # ── Backend (Node/Express + Prisma) ──────────────────────────────────────────
   backend:
     build: ./backend
@@ -60,9 +44,6 @@ services:
       LOG_DIR:               /app/logs
     ports:
       - '4000:4000'
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - uploads_data:/app/uploads
       - ./logs:/app/logs
@@ -73,10 +54,9 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - '3000:80'
+      - '3001:80'
     depends_on:
       - backend
 
 volumes:
-  pgdata:
   uploads_data:
