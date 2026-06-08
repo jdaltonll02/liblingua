@@ -26,7 +26,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        # Use npm install so the lock file is updated automatically when
+        # package.json changes (new devDependencies like @vitest/coverage-v8).
+        # This avoids "lock file out of sync" failures on npm ci.
+        run: npm install
 
       - name: Run unit tests
         working-directory: frontend
