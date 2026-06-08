@@ -35,6 +35,7 @@ enum Role {
   ADMIN
   MODERATOR
   ANALYST
+  RESEARCHER
   CONTRIBUTOR
 }
 
@@ -178,6 +179,13 @@ model Contributor {
   // Public profile
   photo_url  String?
   profession String?
+
+  // Researcher profile (shown on landing page)
+  affiliation            String?
+  orcid_id               String?
+  linkedin_url           String?
+  researcher_bio         String?
+  is_featured_researcher Boolean @default(false)
 
   created_at DateTime @default(now())
 

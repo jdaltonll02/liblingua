@@ -20,7 +20,9 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
   // SSO users who haven't filled in their profile yet
   if (!user.is_profile_complete) return <Navigate to="/auth/complete" replace />;
 
-  if (adminOnly && !user.is_admin) return <Navigate to="/dashboard" replace />;
+  const hasAdminAccess = user.is_admin || user.role === 'RESEARCHER' ||
+    user.role === 'MODERATOR' || user.role === 'ANALYST';
+  if (adminOnly && !hasAdminAccess) return <Navigate to="/dashboard" replace />;
 
   return children;
 }

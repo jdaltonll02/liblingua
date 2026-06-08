@@ -107,4 +107,41 @@ async function sendEmailChangeVerification(newEmail, name, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendEmailChangeVerification };
+async function sendInvitationEmail(email, name, token) {
+  const url = `${process.env.FRONTEND_URL}/auth/reset-password/${token}`;
+  const transporter = createTransporter();
+
+  if (!transporter) {
+    console.log(`\n[EMAIL — dev mode] Invitation / set-password link for ${email}:\n  ${url}\n`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: FROM,
+    to: email,
+    subject: 'You\'ve been invited to liblingua — set your password',
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px">
+        <div style="background:#C41230;padding:16px 24px;border-radius:4px 4px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">liblingua</h1>
+        </div>
+        <div style="border:1px solid #e5e7eb;border-top:none;padding:32px;border-radius:0 0 4px 4px">
+          <p style="color:#111;font-size:16px">Hi ${name},</p>
+          <p style="color:#374151">An administrator has created an account for you on liblingua. Click the button below to set your password and activate your account.</p>
+          <a href="${url}"
+             style="display:inline-block;background:#C41230;color:#fff;font-weight:700;
+                    padding:12px 28px;border-radius:4px;text-decoration:none;margin:16px 0">
+            Set Your Password
+          </a>
+          <p style="color:#6b7280;font-size:13px">This link expires in 72 hours. If you weren't expecting this invitation, you can safely ignore it.</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+          <p style="color:#9ca3af;font-size:12px">
+            Or copy this link into your browser:<br>
+            <a href="${url}" style="color:#C41230">${url}</a>
+          </p>
+        </div>
+      </div>`,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendEmailChangeVerification, sendInvitationEmail };

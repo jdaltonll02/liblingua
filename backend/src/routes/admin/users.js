@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireRole, requireAdmin } = require('../../middleware/auth');
+const { uploadAvatar } = require('../../middleware/upload');
 const {
   listUsers,
   getUserDetail,
@@ -13,13 +14,14 @@ const {
 
 const router = express.Router();
 
-router.get('/', requireAdmin, listUsers);
-router.get('/:id', requireAdmin, getUserDetail);
-router.post('/', requireAdmin, createUser);
-router.patch('/:id', requireAdmin, updateUser);
+// User management is restricted to SUPER_ADMIN and ADMIN only
+router.get('/', requireRole('SUPER_ADMIN', 'ADMIN'), listUsers);
+router.get('/:id', requireRole('SUPER_ADMIN', 'ADMIN'), getUserDetail);
+router.post('/', requireRole('SUPER_ADMIN', 'ADMIN'), createUser);
+router.patch('/:id', requireRole('SUPER_ADMIN', 'ADMIN'), uploadAvatar((req) => req.params.id), updateUser);
 router.patch('/:id/role', requireRole('SUPER_ADMIN'), updateUserRole);
-router.patch('/:id/deactivate', requireAdmin, deactivateUser);
-router.patch('/:id/activate', requireAdmin, activateUser);
+router.patch('/:id/deactivate', requireRole('SUPER_ADMIN', 'ADMIN'), deactivateUser);
+router.patch('/:id/activate', requireRole('SUPER_ADMIN', 'ADMIN'), activateUser);
 router.delete('/:id', requireRole('SUPER_ADMIN'), deleteUser);
 
 module.exports = router;

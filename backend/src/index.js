@@ -23,7 +23,8 @@ const adminManualTransRoutes  = require('./routes/admin/manualTranslation');
 const ticketRoutes      = require('./routes/tickets');
 const donationRoutes    = require('./routes/donations');
 const campaignRoutes    = require('./routes/campaigns');
-const badgeRoutes       = require('./routes/badges');
+const badgeRoutes        = require('./routes/badges');
+const researcherRoutes   = require('./routes/researchers');
 const { authLimiter, translationLimiter, generalLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
@@ -79,6 +80,7 @@ app.use('/api/tickets',      generalLimiter,     ticketRoutes);
 app.use('/api/donations',    generalLimiter,     donationRoutes);
 app.use('/api/campaigns',    generalLimiter,     campaignRoutes);
 app.use('/api/badges',       generalLimiter,     badgeRoutes);
+app.use('/api/researchers',  generalLimiter,     researcherRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

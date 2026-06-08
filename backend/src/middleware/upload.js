@@ -62,7 +62,7 @@ const audioFilter = (_req, file, cb) => {
 
 // ── Avatar storage ────────────────────────────────────────────────────────────
 
-function buildAvatarS3Storage() {
+function buildAvatarS3Storage(resolveId) {
   const { S3Client } = require('@aws-sdk/client-s3');
   const multerS3    = require('multer-s3');
 
@@ -82,12 +82,12 @@ function buildAvatarS3Storage() {
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key(req, file, cb) {
       const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-      cb(null, `avatars/${req.user.id}${ext}`);
+      cb(null, `avatars/${resolveId(req)}${ext}`);
     },
   });
 }
 
-function buildAvatarDiskStorage() {
+function buildAvatarDiskStorage(resolveId) {
   return multer.diskStorage({
     destination(_req, _file, cb) {
       const dir = path.join(__dirname, '../../../uploads/avatars');
@@ -96,7 +96,7 @@ function buildAvatarDiskStorage() {
     },
     filename(req, file, cb) {
       const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-      cb(null, `${req.user.id}${ext}`);
+      cb(null, `${resolveId(req)}${ext}`);
     },
   });
 }
@@ -107,9 +107,10 @@ const imageFilter = (_req, file, cb) => {
   else cb(Object.assign(new Error('Only JPEG, PNG, GIF, or WebP images are accepted'), { status: 400 }));
 };
 
-function uploadAvatar() {
+function uploadAvatar(getUserId) {
+  const resolveId = getUserId || ((req) => req.user.id);
   return multer({
-    storage:    USE_S3 ? buildAvatarS3Storage() : buildAvatarDiskStorage(),
+    storage:    USE_S3 ? buildAvatarS3Storage(resolveId) : buildAvatarDiskStorage(resolveId),
     fileFilter: imageFilter,
     limits:     { fileSize: 5 * 1024 * 1024 }, // 5 MB
   }).single('photo');

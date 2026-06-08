@@ -28,6 +28,9 @@ export default function Navbar() {
             <Link to="/contributors" className="hover:text-gray-300 transition-colors hidden sm:block">
               Contributors
             </Link>
+            <a href="/#researchers" className="hover:text-gray-300 transition-colors hidden md:block">
+              Researchers
+            </a>
             <Link to="/datasets" className="hover:text-gray-300 transition-colors hidden md:block">
               Datasets
             </Link>
@@ -52,7 +55,7 @@ export default function Navbar() {
                 <Link to="/dashboard" className="hover:text-gray-300 transition-colors hidden sm:block">
                   Dashboard
                 </Link>
-                {user.is_admin && (
+                {(user.is_admin || ['RESEARCHER','MODERATOR','ANALYST'].includes(user.role)) && (
                   <Link to="/admin" className="hover:text-gray-300 transition-colors hidden sm:block">
                     Admin
                   </Link>

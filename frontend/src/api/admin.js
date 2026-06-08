@@ -1,9 +1,4 @@
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000',
-  withCredentials: true,
-});
+import api from './client';
 
 // User management
 export const listUsers = (page = 1, limit = 20, filters = {}) =>
@@ -29,6 +24,10 @@ export const activateUser = (id) =>
 
 export const deleteUser = (id, cascade = false) =>
   api.delete(`/admin/users/${id}`, { params: { cascade } });
+
+// Researcher profile management (SUPER_ADMIN / ADMIN only)
+export const updateResearcherProfile = (id, data) =>
+  api.patch(`/admin/users/${id}`, data);
 
 // Audit logging
 export const listAuditLogs = (page = 1, limit = 50, filters = {}) =>

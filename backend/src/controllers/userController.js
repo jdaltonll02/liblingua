@@ -1,6 +1,8 @@
+const { v4: uuidv4 } = require('uuid');
 const prisma = require('../utils/prisma');
 const { errors } = require('../utils/errors');
 const logger = require('../utils/logger');
+const { sendInvitationEmail } = require('../services/emailService');
 
 async function listUsers(req, res, next) {
   try {
@@ -64,6 +66,11 @@ async function getUserDetail(req, res, next) {
         reputation_score: true,
         photo_url: true,
         profession: true,
+        affiliation: true,
+        orcid_id: true,
+        linkedin_url: true,
+        researcher_bio: true,
+        is_featured_researcher: true,
         created_at: true,
         email_verified: true,
         _count: { select: { translations: true } },
@@ -89,34 +96,47 @@ async function getUserDetail(req, res, next) {
   }
 }
 
+const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'ANALYST', 'RESEARCHER', 'CONTRIBUTOR'];
+
 async function createUser(req, res, next) {
   try {
-    const { name, email, native_language, is_profile_complete } = req.body;
+    const { name, email, role = 'CONTRIBUTOR', native_language } = req.body;
 
     if (!name?.trim() || !email?.trim()) {
       throw errors.VALIDATION_ERROR('name and email are required');
     }
+    if (!VALID_ROLES.includes(role)) {
+      throw errors.VALIDATION_ERROR('Invalid role');
+    }
 
     const existing = await prisma.contributor.findUnique({ where: { email } });
     if (existing) throw errors.CONFLICT('User with this email already exists');
+
+    const reset_token = uuidv4();
+    const reset_token_expires_at = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
 
     const user = await prisma.contributor.create({
       data: {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         native_language: native_language || null,
-        is_profile_complete: Boolean(is_profile_complete),
-        role: 'CONTRIBUTOR',
+        is_profile_complete: true,
+        role,
+        email_verified: true,
+        reset_token,
+        reset_token_expires_at,
       },
     });
 
-    await logAction('user_created', req.user.id, user.id, 'User', null, req.ip);
+    sendInvitationEmail(user.email, user.name, reset_token).catch(console.error);
+    await logAction('user_created', req.user.id, user.id, 'User', { role }, req.ip);
 
     res.status(201).json({
       id: user.id,
       name: user.name,
       email: user.email,
-      message: 'User created. They should verify their email and set a password.',
+      role: user.role,
+      message: `Invitation sent to ${user.email}. They must set a password before signing in.`,
     });
   } catch (err) {
     next(err);
@@ -134,15 +154,32 @@ async function updateUser(req, res, next) {
     const updates = {};
     const changes = {};
 
-    ['name', 'native_language', 'native_dialect', 'region_of_origin', 'age_group', 'is_l1_speaker', 'photo_url', 'profession'].forEach((field) => {
+    const UPDATABLE = [
+      'name', 'native_language', 'native_dialect', 'region_of_origin', 'age_group',
+      'is_l1_speaker', 'photo_url', 'profession',
+      'affiliation', 'orcid_id', 'linkedin_url', 'researcher_bio', 'is_featured_researcher',
+    ];
+
+    const BOOL_FIELDS = new Set(['is_l1_speaker', 'is_featured_researcher']);
+    UPDATABLE.forEach((field) => {
       if (req.body[field] !== undefined) {
-        const newVal = req.body[field];
+        let newVal = req.body[field];
+        if (BOOL_FIELDS.has(field)) newVal = newVal === true || newVal === 'true';
         if (user[field] !== newVal) {
           changes[field] = { old: user[field], new: newVal };
           updates[field] = newVal;
         }
       }
     });
+
+    if (req.file) {
+      const newPhotoUrl = req.file.location
+        ?? req.file.path.replace(/\\/g, '/').replace(/^.*uploads\//, 'uploads/');
+      if (user.photo_url !== newPhotoUrl) {
+        changes.photo_url = { old: user.photo_url, new: newPhotoUrl };
+        updates.photo_url = newPhotoUrl;
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.json(user);
@@ -162,7 +199,7 @@ async function updateUserRole(req, res, next) {
     const { role } = req.body;
     const id = req.params.id;
 
-    if (!['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'ANALYST', 'CONTRIBUTOR'].includes(role)) {
+    if (!VALID_ROLES.includes(role)) {
       throw errors.VALIDATION_ERROR('Invalid role');
     }
 

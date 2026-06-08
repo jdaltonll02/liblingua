@@ -6,8 +6,9 @@ import { getStats } from '../api/stats';
 import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 import { listPublished, publishLanguage, unpublishLanguage, deletePublication, syncHuggingFace } from '../api/dataset';
 import { getLanguages, createLanguage, updateLanguage, deleteLanguage } from '../api/languages';
-import { listContributorsAdmin, deleteContributor } from '../api/contributors';
+import { listUsers, getUserDetail, createUser, updateUserRole, deactivateUser, activateUser, deleteUser, listAuditLogs, updateResearcherProfile } from '../api/admin';
 import { listTickets, getTicket, updateTicket, getTicketStats } from '../api/tickets';
+import { useAuth } from '../hooks/useAuth';
 import { listDonations } from '../api/donations';
 import { listCampaigns, createCampaign, updateCampaign, deleteCampaign } from '../api/campaigns';
 import ManualTranslateTab from '../components/ManualTranslateTab';
@@ -47,20 +48,24 @@ function ErrorBanner({ message, onDismiss }) {
 }
 
 export default function Admin() {
+  const { user: currentUser } = useAuth();
+  const isAdminOrAbove = currentUser?.is_admin || ['SUPER_ADMIN','ADMIN'].includes(currentUser?.role);
   const [activeTab, setActiveTab] = useState('translations');
 
-  const TABS = [
-    { id: 'manual',       label: 'My Translate' },
-    { id: 'translations', label: 'Translations' },
-    { id: 'import',       label: 'Import' },
-    { id: 'languages',    label: 'Languages' },
-    { id: 'dataset',      label: 'Dataset' },
-    { id: 'contributors', label: 'Contributors' },
-    { id: 'stats',        label: 'Stats' },
-    { id: 'campaigns',    label: 'Campaigns' },
-    { id: 'support',      label: 'Support' },
-    { id: 'donations',    label: 'Donations' },
+  const ALL_TABS = [
+    { id: 'manual',        label: 'My Translate',  adminOnly: false },
+    { id: 'translations',  label: 'Translations',  adminOnly: false },
+    { id: 'import',        label: 'Import',        adminOnly: false },
+    { id: 'languages',     label: 'Languages',     adminOnly: false },
+    { id: 'dataset',       label: 'Dataset',       adminOnly: false },
+    { id: 'researchers',   label: 'Researchers',   adminOnly: true  },
+    { id: 'contributors',  label: 'Contributors',  adminOnly: true  },
+    { id: 'stats',         label: 'Stats',         adminOnly: false },
+    { id: 'campaigns',     label: 'Campaigns',     adminOnly: false },
+    { id: 'support',       label: 'Support',       adminOnly: false },
+    { id: 'donations',     label: 'Donations',     adminOnly: false },
   ];
+  const TABS = ALL_TABS.filter((t) => !t.adminOnly || isAdminOrAbove);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -93,16 +98,17 @@ export default function Admin() {
 
       <main className="flex-1 px-6 py-8 pb-20 md:pb-8">
         <ErrorBoundary key={activeTab}>
-          {activeTab === 'manual'       && <ManualTranslateTab />}
-          {activeTab === 'translations' && <TranslationsTab />}
-          {activeTab === 'import'       && <ImportTab />}
-          {activeTab === 'languages'    && <LanguagesTab />}
-          {activeTab === 'dataset'      && <DatasetTab />}
-          {activeTab === 'contributors' && <ContributorsTab />}
-          {activeTab === 'stats'        && <StatsTab />}
-          {activeTab === 'campaigns'    && <CampaignsTab />}
-          {activeTab === 'support'      && <SupportTab />}
-          {activeTab === 'donations'    && <DonationsTab />}
+          {activeTab === 'manual'        && <ManualTranslateTab />}
+          {activeTab === 'translations'  && <TranslationsTab />}
+          {activeTab === 'import'        && <ImportTab />}
+          {activeTab === 'languages'     && <LanguagesTab />}
+          {activeTab === 'dataset'       && <DatasetTab />}
+          {activeTab === 'researchers'   && <ResearchersTab />}
+          {activeTab === 'contributors'  && <ContributorsTab />}
+          {activeTab === 'stats'         && <StatsTab />}
+          {activeTab === 'campaigns'     && <CampaignsTab />}
+          {activeTab === 'support'       && <SupportTab />}
+          {activeTab === 'donations'     && <DonationsTab />}
         </ErrorBoundary>
       </main>
     </div>
@@ -852,136 +858,644 @@ function DatasetTab() {
   );
 }
 
-// ── Contributors ──────────────────────────────────────────────────────────────
+// ── Researchers ───────────────────────────────────────────────────────────────
 
-function ContributorsTab() {
-  const [contributors, setContributors] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(null);
+function resolvePicUrl(url) {
+  if (!url) return null;
+  return url.startsWith('uploads/') ? `/${url}` : url;
+}
 
-  const load = useCallback(() => {
+function ResearchersTab() {
+  const [researchers, setResearchers] = useState([]);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [editing, setEditing]         = useState(null);
+  const [saving, setSaving]           = useState(false);
+  const [form, setForm]               = useState({});
+  const [photoFile, setPhotoFile]     = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+
+  const load = () => {
     setLoading(true);
     setError('');
-    listContributorsAdmin(page, 20, search)
-      .then((res) => {
-        setContributors(res.data.contributors);
-        setMeta(res.data.pagination);
-      })
-      .catch(() => setError('Failed to load contributors.'))
+    listUsers(1, 100, { role: 'RESEARCHER' })
+      .then((res) => setResearchers(res.data.data))
+      .catch(() => setError('Failed to load researchers.'))
       .finally(() => setLoading(false));
-  }, [page, search]);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, []);
 
-  const handleDelete = async () => {
-    setDeleting(deleteTarget.id);
+  const openEdit = (r) => {
+    setEditing(r);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setForm({
+      affiliation:            r.affiliation            || '',
+      orcid_id:               r.orcid_id               || '',
+      linkedin_url:           r.linkedin_url           || '',
+      researcher_bio:         r.researcher_bio         || '',
+      is_featured_researcher: r.is_featured_researcher ?? false,
+    });
+  };
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      await deleteContributor(deleteTarget.id);
-      setDeleteTarget(null);
+      let payload;
+      if (photoFile) {
+        payload = new FormData();
+        Object.entries(form).forEach(([k, v]) => payload.append(k, v));
+        payload.append('photo', photoFile);
+      } else {
+        payload = form;
+      }
+      await updateResearcherProfile(editing.id, payload);
+      setEditing(null);
       load();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to delete contributor.');
-      setDeleteTarget(null);
+      setError(err.response?.data?.error || 'Failed to save.');
     } finally {
-      setDeleting(null);
+      setSaving(false);
     }
   };
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Contributor Management</h1>
-      <p className="text-sm text-gray-500 mb-6">View all contributors and remove those who violate community guidelines.</p>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold text-gray-900">Researchers</h1>
+        <span className="text-sm text-gray-400">{researchers.length} researchers</span>
+      </div>
+      <p className="text-sm text-gray-500 mb-6">
+        Manage researcher profiles shown on the public landing page. Grant the Researcher role
+        to a user from the Contributors tab, then edit their profile here.
+      </p>
 
       <ErrorBanner message={error} onDismiss={() => setError('')} />
 
-      {deleteTarget && (
-        <ConfirmDialog
-          message={`Delete contributor "${deleteTarget.name}" and all their data? This cannot be undone.`}
-          confirmLabel="Delete Contributor"
-          danger
-          onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
+      {/* Edit panel */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex" onClick={() => setEditing(null)}>
+          <div className="flex-1 bg-black/30" />
+          <div className="w-full max-w-md bg-white shadow-2xl overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900">Edit Researcher Profile</h2>
+              <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">{editing.name} · {editing.email}</p>
 
-      <div className="card mb-4">
-        <input
-          type="text"
-          className="input-field w-full md:w-64"
-          placeholder="Search by name or email…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        />
-      </div>
-
-      <div className="card overflow-x-auto">
-        {loading ? (
-          <p className="text-sm text-gray-400">Loading…</p>
-        ) : contributors.length === 0 ? (
-          <p className="text-sm text-gray-400">No contributors found.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="pb-2 font-medium">Name</th>
-                <th className="pb-2 font-medium">Email</th>
-                <th className="pb-2 font-medium">Translations</th>
-                <th className="pb-2 font-medium">Reputation</th>
-                <th className="pb-2 font-medium">Profile</th>
-                <th className="pb-2 font-medium">Joined</th>
-                <th className="pb-2 font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {contributors.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="py-3 font-medium">
-                    {c.is_admin && <span className="badge bg-purple-100 text-purple-700 mr-2">Admin</span>}
-                    {c.name}
-                  </td>
-                  <td className="py-3 text-xs text-gray-500">{c.email}</td>
-                  <td className="py-3">{c._count.translations}</td>
-                  <td className="py-3">{(c.reputation_score || 1).toFixed(2)}</td>
-                  <td className="py-3">
-                    <span className={`badge ${c.is_profile_complete ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                      {c.is_profile_complete ? 'Complete' : 'Incomplete'}
-                    </span>
-                  </td>
-                  <td className="py-3 text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString()}</td>
-                  <td className="py-3">
-                    {c.is_admin ? (
-                      <span className="text-xs text-gray-300 font-medium" title="Demote this account from admin before deleting">
-                        🔒 Admin
-                      </span>
+            <div className="space-y-4">
+              {/* Photo upload */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">Photo</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-liberia-blue flex items-center justify-center flex-shrink-0 border-2 border-gray-200">
+                    {photoPreview || editing?.photo_url ? (
+                      <img
+                        src={photoPreview || resolvePicUrl(editing.photo_url)}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
-                      <button
-                        onClick={() => setDeleteTarget(c)}
-                        disabled={deleting === c.id}
-                        className="text-xs text-red-500 font-semibold hover:underline disabled:opacity-50"
-                      >
-                        {deleting === c.id ? '…' : 'Delete'}
+                      <span className="text-white text-2xl font-bold select-none">
+                        {editing?.name?.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <input
+                      type="file"
+                      id="researcher-photo-upload"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      className="hidden"
+                      onChange={handlePhotoChange}
+                    />
+                    <label htmlFor="researcher-photo-upload"
+                      className="btn-secondary text-xs cursor-pointer inline-block">
+                      Choose Photo
+                    </label>
+                    {photoPreview && (
+                      <button type="button"
+                        onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                        className="ml-2 text-xs text-gray-400 hover:text-liberia-red transition-colors">
+                        Remove
                       </button>
                     )}
-                  </td>
-                </tr>
+                    <p className="text-xs text-gray-400 mt-1">JPEG, PNG, GIF or WebP — max 5 MB</p>
+                  </div>
+                </div>
+              </div>
+
+              {[
+                { key: 'affiliation',  label: 'Affiliation',  placeholder: 'University of Liberia' },
+                { key: 'orcid_id',     label: 'ORCID ID',     placeholder: '0000-0001-2345-6789' },
+                { key: 'linkedin_url', label: 'LinkedIn URL', placeholder: 'https://linkedin.com/in/…' },
+              ].map(({ key, label, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+                  <input
+                    type="text"
+                    className="input-field w-full"
+                    placeholder={placeholder}
+                    value={form[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Bio</label>
+                <textarea
+                  rows={4}
+                  className="input-field w-full resize-none"
+                  placeholder="Brief research bio…"
+                  value={form.researcher_bio}
+                  onChange={(e) => setForm((f) => ({ ...f, researcher_bio: e.target.value }))}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_featured_researcher}
+                  onChange={(e) => setForm((f) => ({ ...f, is_featured_researcher: e.target.checked }))}
+                  className="w-4 h-4 accent-liberia-red"
+                />
+                <span className="text-sm text-gray-700">Show on landing page</span>
+              </label>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button onClick={handleSave} disabled={saving}
+                className="btn-primary flex-1 disabled:opacity-50">
+                {saving ? 'Saving…' : 'Save Profile'}
+              </button>
+              <button onClick={() => setEditing(null)} className="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading…</p>
+      ) : researchers.length === 0 ? (
+        <div className="card text-center py-12 text-sm text-gray-400">
+          <p className="mb-2">No researchers yet.</p>
+          <p>Go to <strong>Contributors</strong>, find a user, and change their role to <strong>Researcher</strong>.</p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {researchers.map((r) => (
+            <div key={r.id} className="card flex flex-col items-center text-center gap-2">
+              {r.photo_url ? (
+                <img src={resolvePicUrl(r.photo_url)} alt={r.name}
+                  className="w-16 h-16 rounded-full object-cover border border-gray-100" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-liberia-blue flex items-center justify-center text-white text-2xl font-black">
+                  {r.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p className="font-semibold text-gray-900">{r.name}</p>
+                <p className="text-xs text-gray-400">{r.email}</p>
+                {r.affiliation && <p className="text-xs text-gray-500 mt-0.5">{r.affiliation}</p>}
+                {r.orcid_id && <p className="text-xs font-mono text-gray-400 mt-0.5">{r.orcid_id}</p>}
+              </div>
+              <div className="flex gap-2 mt-auto">
+                {r.is_featured_researcher && (
+                  <span className="badge bg-green-100 text-green-700 text-xs">Featured</span>
+                )}
+                <span className={`badge text-xs ${r.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                  {r.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <button onClick={() => openEdit(r)}
+                className="btn-secondary text-xs w-full mt-1">
+                Edit Profile
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Contributors ──────────────────────────────────────────────────────────────
+
+function ContributorsTab() {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+
+  const [subTab, setSubTab] = useState('users');
+
+  // Users state
+  const [users, setUsers]             = useState([]);
+  const [meta, setMeta]               = useState(null);
+  const [page, setPage]               = useState(1);
+  const [search, setSearch]           = useState('');
+  const [roleFilter, setRoleFilter]   = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [error, setError]             = useState('');
+  const [actionLoading, setActionLoading] = useState(null);
+  const [deleteTarget, setDeleteTarget]   = useState(null);
+  const [detailUser, setDetailUser]       = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Add User modal state
+  const [addUserOpen, setAddUserOpen]       = useState(false);
+  const [addUserForm, setAddUserForm]       = useState({ name: '', email: '', role: 'CONTRIBUTOR' });
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [addUserError, setAddUserError]     = useState('');
+  const [addUserSuccess, setAddUserSuccess] = useState('');
+
+  // Audit log state
+  const [auditLogs, setAuditLogs]   = useState([]);
+  const [auditMeta, setAuditMeta]   = useState(null);
+  const [auditPage, setAuditPage]   = useState(1);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'ANALYST', 'RESEARCHER', 'CONTRIBUTOR'];
+  const ROLE_LABELS = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', MODERATOR: 'Moderator', ANALYST: 'Analyst', RESEARCHER: 'Researcher', CONTRIBUTOR: 'Contributor' };
+  const ROLE_STYLES = { SUPER_ADMIN: 'bg-purple-100 text-purple-700', ADMIN: 'bg-blue-100 text-blue-700', MODERATOR: 'bg-orange-100 text-orange-700', ANALYST: 'bg-teal-100 text-teal-700', RESEARCHER: 'bg-indigo-100 text-indigo-700', CONTRIBUTOR: 'bg-gray-100 text-gray-500' };
+  const ACTION_LABELS = { user_created: 'Created', user_updated: 'Updated', role_changed: 'Role changed', user_deactivated: 'Deactivated', user_activated: 'Activated', user_deleted: 'Deleted' };
+
+  const loadUsers = useCallback(() => {
+    setLoadingUsers(true);
+    setError('');
+    const filters = {};
+    if (roleFilter) filters.role = roleFilter;
+    if (statusFilter !== '') filters.is_active = statusFilter;
+    if (search) filters.search = search;
+    listUsers(page, 20, filters)
+      .then((res) => { setUsers(res.data.data); setMeta(res.data.meta); })
+      .catch(() => setError('Failed to load users.'))
+      .finally(() => setLoadingUsers(false));
+  }, [page, search, roleFilter, statusFilter]);
+
+  useEffect(() => { if (subTab === 'users') loadUsers(); }, [loadUsers, subTab]);
+
+  const loadAuditLogs = useCallback(() => {
+    setLoadingAudit(true);
+    listAuditLogs(auditPage, 20)
+      .then((res) => { setAuditLogs(res.data.data); setAuditMeta(res.data.meta); })
+      .catch(() => {})
+      .finally(() => setLoadingAudit(false));
+  }, [auditPage]);
+
+  useEffect(() => { if (subTab === 'audit') loadAuditLogs(); }, [loadAuditLogs, subTab]);
+
+  const handleRoleChange = async (userId, newRole) => {
+    setActionLoading(userId + '_role');
+    try {
+      await updateUserRole(userId, newRole);
+      loadUsers();
+      if (detailUser?.id === userId) setDetailUser((u) => ({ ...u, role: newRole }));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update role.');
+    } finally { setActionLoading(null); }
+  };
+
+  const handleToggleActive = async (u) => {
+    setActionLoading(u.id + '_status');
+    try {
+      u.is_active ? await deactivateUser(u.id) : await activateUser(u.id);
+      loadUsers();
+      if (detailUser?.id === u.id) setDetailUser((d) => ({ ...d, is_active: !d.is_active }));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update status.');
+    } finally { setActionLoading(null); }
+  };
+
+  const handleDelete = async () => {
+    const id = deleteTarget.id;
+    setActionLoading(id + '_del');
+    try {
+      await deleteUser(id, true);
+      setDeleteTarget(null);
+      if (detailUser?.id === id) setDetailUser(null);
+      loadUsers();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete user.');
+      setDeleteTarget(null);
+    } finally { setActionLoading(null); }
+  };
+
+  const openDetail = (u) => {
+    setDetailUser(u);
+    setLoadingDetail(true);
+    getUserDetail(u.id)
+      .then((res) => setDetailUser(res.data))
+      .catch(() => {})
+      .finally(() => setLoadingDetail(false));
+  };
+
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    setAddUserLoading(true);
+    setAddUserError('');
+    try {
+      const res = await createUser(addUserForm);
+      setAddUserSuccess(res.data.message || `Invitation sent to ${addUserForm.email}.`);
+      setAddUserForm({ name: '', email: '', role: 'CONTRIBUTOR' });
+      loadUsers();
+      setTimeout(() => { setAddUserOpen(false); setAddUserSuccess(''); }, 3000);
+    } catch (err) {
+      setAddUserError(err.response?.data?.error || 'Failed to create user.');
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+        <div className="flex items-center gap-3">
+          {meta && <span className="text-sm text-gray-400">{meta.total} users total</span>}
+          <button onClick={() => { setAddUserOpen(true); setAddUserError(''); setAddUserSuccess(''); }}
+            className="bg-liberia-red hover:bg-red-700 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors">
+            + Add User
+          </button>
+        </div>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">Manage roles, account status, and access for all users.</p>
+
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {[['users', 'Users'], ['audit', 'Audit Log']].map(([key, label]) => (
+          <button key={key} onClick={() => setSubTab(key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${subTab === key ? 'border-liberia-red text-liberia-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
-      {meta && meta.totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-6">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            className="btn-secondary text-sm disabled:opacity-40">← Prev</button>
-          <span className="text-sm text-gray-500 self-center">Page {page} of {meta.totalPages}</span>
-          <button onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))} disabled={page === meta.totalPages}
-            className="btn-secondary text-sm disabled:opacity-40">Next →</button>
+      <ErrorBanner message={error} onDismiss={() => setError('')} />
+
+      {/* ── Users ── */}
+      {subTab === 'users' && (
+        <>
+          {deleteTarget && (
+            <ConfirmDialog
+              message={`Permanently delete "${deleteTarget.name}"? This removes all their data and cannot be undone.`}
+              confirmLabel="Delete User" danger
+              onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
+            />
+          )}
+
+          <div className="card mb-4 flex flex-wrap gap-3">
+            <input type="text" className="input-field flex-1 min-w-48" placeholder="Search by name or email…"
+              value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <select className="input-field" value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}>
+              <option value="">All roles</option>
+              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            </select>
+            <select className="input-field" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+              <option value="">All status</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+
+          <div className="card overflow-x-auto">
+            {loadingUsers ? <p className="text-sm text-gray-400">Loading…</p>
+            : users.length === 0 ? <p className="text-sm text-gray-400">No users found.</p>
+            : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="pb-2 font-medium">Name</th>
+                    <th className="pb-2 font-medium">Email</th>
+                    <th className="pb-2 font-medium">Role</th>
+                    <th className="pb-2 font-medium">Status</th>
+                    <th className="pb-2 font-medium">Translations</th>
+                    <th className="pb-2 font-medium">Joined</th>
+                    <th className="pb-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {users.map((u) => (
+                    <tr key={u.id} className="hover:bg-gray-50">
+                      <td className="py-3">
+                        <button onClick={() => openDetail(u)} className="font-medium text-gray-900 hover:text-liberia-red hover:underline text-left">
+                          {u.name}
+                        </button>
+                      </td>
+                      <td className="py-3 text-xs text-gray-500">{u.email}</td>
+                      <td className="py-3">
+                        {isSuperAdmin && u.id !== currentUser?.id ? (
+                          <select value={u.role} disabled={actionLoading === u.id + '_role'}
+                            onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                            className={`text-xs font-semibold px-2 py-1 rounded-full border border-transparent cursor-pointer focus:outline-none focus:ring-2 focus:ring-liberia-red ${ROLE_STYLES[u.role]}`}>
+                            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                          </select>
+                        ) : (
+                          <span className={`badge ${ROLE_STYLES[u.role]}`}>{ROLE_LABELS[u.role]}</span>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        {u.id !== currentUser?.id ? (
+                          <button onClick={() => handleToggleActive(u)} disabled={actionLoading === u.id + '_status'}
+                            className={`badge cursor-pointer hover:opacity-75 disabled:opacity-50 ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                            {actionLoading === u.id + '_status' ? '…' : u.is_active ? 'Active' : 'Inactive'}
+                          </button>
+                        ) : (
+                          <span className="badge bg-green-100 text-green-700">Active</span>
+                        )}
+                      </td>
+                      <td className="py-3">{u._count?.translations ?? '—'}</td>
+                      <td className="py-3 text-xs text-gray-400">{new Date(u.created_at).toLocaleDateString()}</td>
+                      <td className="py-3">
+                        {u.id === currentUser?.id ? (
+                          <span className="text-xs text-gray-300">You</span>
+                        ) : (
+                          <button onClick={() => setDeleteTarget(u)} disabled={!!actionLoading}
+                            className="text-xs text-red-500 font-semibold hover:underline disabled:opacity-50">
+                            {actionLoading === u.id + '_del' ? '…' : 'Delete'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {meta && meta.pages > 1 && (
+            <div className="flex justify-center gap-2 mt-6">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="btn-secondary text-sm disabled:opacity-40">← Prev</button>
+              <span className="text-sm text-gray-500 self-center">Page {page} of {meta.pages}</span>
+              <button onClick={() => setPage((p) => Math.min(meta.pages, p + 1))} disabled={page === meta.pages} className="btn-secondary text-sm disabled:opacity-40">Next →</button>
+            </div>
+          )}
+
+          {/* User detail slide-over */}
+          {detailUser && (
+            <div className="fixed inset-0 z-50 flex" onClick={() => setDetailUser(null)}>
+              <div className="flex-1 bg-black/30" />
+              <div className="w-full max-w-md bg-white shadow-2xl overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold text-gray-900">User Detail</h2>
+                  <button onClick={() => setDetailUser(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                </div>
+                {loadingDetail ? <p className="text-sm text-gray-400">Loading…</p> : (
+                  <>
+                    <dl className="space-y-3 text-sm mb-6">
+                      {[
+                        ['Name', detailUser.name],
+                        ['Email', detailUser.email],
+                        ['Native language', detailUser.native_language || '—'],
+                        ['Region', detailUser.region_of_origin || '—'],
+                        ['Age group', detailUser.age_group || '—'],
+                        ['Translations', detailUser._count?.translations ?? '—'],
+                        ['Reputation', detailUser.reputation_score != null ? `${(+detailUser.reputation_score).toFixed(2)} / 5.0` : '—'],
+                        ['Email verified', detailUser.email_verified ? 'Yes' : 'No'],
+                        ['Joined', new Date(detailUser.created_at).toLocaleDateString()],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex justify-between gap-4">
+                          <dt className="text-gray-500">{label}</dt>
+                          <dd className="font-medium text-gray-800 text-right">{val}</dd>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center gap-4">
+                        <dt className="text-gray-500">Role</dt>
+                        <dd><span className={`badge ${ROLE_STYLES[detailUser.role]}`}>{ROLE_LABELS[detailUser.role]}</span></dd>
+                      </div>
+                      <div className="flex justify-between items-center gap-4">
+                        <dt className="text-gray-500">Status</dt>
+                        <dd><span className={`badge ${detailUser.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{detailUser.is_active ? 'Active' : 'Inactive'}</span></dd>
+                      </div>
+                    </dl>
+                    {detailUser.auditHistory?.length > 0 && (
+                      <>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3 border-t pt-4">Recent Activity</h3>
+                        <ul className="space-y-2">
+                          {detailUser.auditHistory.map((log, i) => (
+                            <li key={i} className="flex justify-between text-xs">
+                              <span className="font-medium text-gray-700">{ACTION_LABELS[log.action] || log.action}</span>
+                              <span className="text-gray-400">{new Date(log.created_at).toLocaleDateString()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Audit log ── */}
+      {subTab === 'audit' && (
+        <div className="card overflow-x-auto">
+          {loadingAudit ? <p className="text-sm text-gray-400">Loading…</p>
+          : auditLogs.length === 0 ? <p className="text-sm text-gray-400">No audit logs found.</p>
+          : (
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="pb-2 font-medium">When</th>
+                    <th className="pb-2 font-medium">Actor</th>
+                    <th className="pb-2 font-medium">Action</th>
+                    <th className="pb-2 font-medium">Target ID</th>
+                    <th className="pb-2 font-medium">Changes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {auditLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-gray-50">
+                      <td className="py-3 text-xs text-gray-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                      <td className="py-3 font-medium">{log.actor?.name || '—'}</td>
+                      <td className="py-3"><span className="badge bg-gray-100 text-gray-600">{ACTION_LABELS[log.action] || log.action}</span></td>
+                      <td className="py-3 text-xs text-gray-400 font-mono">{log.target_id ? log.target_id.slice(0, 8) + '…' : '—'}</td>
+                      <td className="py-3 text-xs text-gray-400 max-w-xs truncate">{log.changes ? JSON.stringify(log.changes) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {auditMeta && auditMeta.pages > 1 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <button onClick={() => setAuditPage((p) => Math.max(1, p - 1))} disabled={auditPage === 1} className="btn-secondary text-sm disabled:opacity-40">← Prev</button>
+                  <span className="text-sm text-gray-500 self-center">Page {auditPage} of {auditMeta.pages}</span>
+                  <button onClick={() => setAuditPage((p) => Math.min(auditMeta.pages, p + 1))} disabled={auditPage === auditMeta.pages} className="btn-secondary text-sm disabled:opacity-40">Next →</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Add User Modal ── */}
+      {addUserOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setAddUserOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900">Add User</h2>
+              <button onClick={() => setAddUserOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+
+            {addUserSuccess ? (
+              <div className="text-center py-6">
+                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-gray-700">{addUserSuccess}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleAddUser} className="space-y-4">
+                {addUserError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{addUserError}</div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
+                  <input type="text" required className="input-field w-full"
+                    placeholder="e.g. Josephine Kollie"
+                    value={addUserForm.name}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address <span className="text-red-500">*</span></label>
+                  <input type="email" required className="input-field w-full"
+                    placeholder="e.g. josephine@example.com"
+                    value={addUserForm.email}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <select className="input-field w-full"
+                    value={addUserForm.role}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, role: e.target.value }))}>
+                    {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  </select>
+                </div>
+                <p className="text-xs text-gray-400">An invitation email will be sent with a link to set their password.</p>
+                <div className="flex gap-3 pt-1">
+                  <button type="submit" disabled={addUserLoading}
+                    className="flex-1 bg-liberia-red hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50">
+                    {addUserLoading ? 'Sending…' : 'Send Invitation'}
+                  </button>
+                  <button type="button" onClick={() => setAddUserOpen(false)} className="btn-secondary flex-1">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </div>

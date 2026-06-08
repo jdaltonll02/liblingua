@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import StatsWidget from '../components/StatsWidget';
+import { listResearchers } from '../api/researchers';
 
 const LANGUAGES = [
   { name: 'Kpelle',    region: 'North-Central Liberia', speakers: '~487,000' },
@@ -39,6 +41,83 @@ const DOMAINS = [
   { name: 'Conversational', icon: '💬', desc: 'Everyday phrases and dialogue' },
   { name: 'General', icon: '🌍', desc: 'General knowledge and broad topics' },
 ];
+
+function ResearchersSection() {
+  const [researchers, setResearchers] = useState([]);
+
+  useEffect(() => {
+    listResearchers()
+      .then((res) => setResearchers(res.data.data))
+      .catch(() => {});
+  }, []);
+
+  if (researchers.length === 0) return null;
+
+  return (
+    <section id="researchers" className="py-20 px-4 bg-white">
+      <div className="max-w-5xl mx-auto">
+        <div className="section-rule" />
+        <h2 className="text-4xl font-black text-liberia-blue mb-2">Research Team</h2>
+        <p className="text-gray-500 mb-10">
+          Meet the researchers building NLP resources for Liberia's indigenous languages.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {researchers.map((r) => (
+            <div key={r.id} className="flex flex-col items-center text-center p-6 border border-gray-100 rounded-2xl hover:border-liberia-red transition-colors">
+              {r.photo_url ? (
+                <img
+                  src={r.photo_url.startsWith('uploads/') ? `/${r.photo_url}` : r.photo_url}
+                  alt={r.name}
+                  className="w-24 h-24 rounded-full object-cover mb-4 border-2 border-gray-100"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-liberia-blue flex items-center justify-center mb-4 text-white text-3xl font-black">
+                  {r.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <h3 className="font-bold text-liberia-blue text-lg mb-0.5">{r.name}</h3>
+              {r.affiliation && (
+                <p className="text-sm text-gray-500 mb-3">{r.affiliation}</p>
+              )}
+              {r.researcher_bio && (
+                <p className="text-xs text-gray-400 leading-relaxed mb-4">{r.researcher_bio}</p>
+              )}
+              <div className="flex items-center gap-3 mt-auto">
+                {r.orcid_id && (
+                  <a
+                    href={`https://orcid.org/${r.orcid_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-green-600 transition-colors font-mono"
+                    title="ORCID"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden>
+                      <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zM7.369 4.378c.525 0 .947.431.947.947s-.422.947-.947.947a.947.947 0 0 1 0-1.894zm-.722 3.038h1.444v10.041H6.647V7.416zm3.562 0h3.9c3.712 0 5.344 2.653 5.344 5.025 0 2.578-2.016 5.016-5.325 5.016h-3.919V7.416zm1.444 1.303v7.444h2.297c2.359 0 3.9-1.856 3.9-3.722 0-2.016-1.566-3.722-3.9-3.722h-2.297z"/>
+                    </svg>
+                    {r.orcid_id}
+                  </a>
+                )}
+                {r.linkedin_url && (
+                  <a
+                    href={r.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                    title="LinkedIn"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden>
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function Landing() {
   return (
@@ -200,6 +279,9 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── Researchers ──────────────────────────────────────────────────────── */}
+      <ResearchersSection />
+
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-20 px-4 bg-liberia-red text-white text-center">
         <div className="max-w-2xl mx-auto">
@@ -212,7 +294,7 @@ export default function Landing() {
             to="/auth?tab=register"
             className="inline-block bg-white text-liberia-red hover:bg-gray-100 font-black px-10 py-4 rounded text-lg transition-colors"
           >
-            Get Started — It's Free
+            Get Started
           </Link>
         </div>
       </section>
@@ -230,6 +312,7 @@ export default function Landing() {
               <ul className="space-y-1.5">
                 <li><Link to="/faq"          className="hover:text-white transition-colors">FAQ</Link></li>
                 <li><Link to="/contributors" className="hover:text-white transition-colors">Contributors</Link></li>
+                <li><a href="#researchers"   className="hover:text-white transition-colors">Researchers</a></li>
                 <li><Link to="/funding"      className="hover:text-white transition-colors">Support the Project</Link></li>
               </ul>
             </div>

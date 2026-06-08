@@ -3,7 +3,7 @@ const { randomBytes } = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('../utils/prisma');
 const { signToken, verifyToken } = require('../utils/jwt');
-const { sendVerificationEmail } = require('../services/emailService');
+const { sendVerificationEmail, sendInvitationEmail } = require('../services/emailService');
 
 const AGE_GROUP_MAP = {
   under_18: 'under_18',
@@ -66,20 +66,20 @@ async function findOrCreateOAuthUser({ email, name, googleId, githubId, provider
     if (Object.keys(update).length) {
       contributor = await prisma.contributor.update({ where: { id: contributor.id }, data: update });
     }
-    return contributor;
+    return { contributor, isNew: false };
   }
 
   // Check by provider ID
   if (googleId) {
     contributor = await prisma.contributor.findUnique({ where: { google_id: googleId } }).catch(() => null);
-    if (contributor) return contributor;
+    if (contributor) return { contributor, isNew: false };
   }
   if (githubId) {
     contributor = await prisma.contributor.findUnique({ where: { github_id: githubId } }).catch(() => null);
-    if (contributor) return contributor;
+    if (contributor) return { contributor, isNew: false };
   }
 
-  return prisma.contributor.create({
+  const created = await prisma.contributor.create({
     data: {
       name,
       email,
@@ -90,6 +90,17 @@ async function findOrCreateOAuthUser({ email, name, googleId, githubId, provider
       is_profile_complete: false,
     },
   });
+  return { contributor: created, isNew: true };
+}
+
+async function issueOAuthSetPasswordEmail(contributor) {
+  const reset_token = uuidv4();
+  const reset_token_expires_at = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  await prisma.contributor.update({
+    where: { id: contributor.id },
+    data: { reset_token, reset_token_expires_at },
+  });
+  sendInvitationEmail(contributor.email, contributor.name, reset_token).catch(console.error);
 }
 
 // ── Password auth ─────────────────────────────────────────────────────────────
@@ -150,7 +161,16 @@ async function login(req, res, next) {
     const { email, password } = req.body;
 
     const contributor = await prisma.contributor.findUnique({ where: { email } });
-    if (!contributor || !contributor.password_hash) {
+    if (!contributor) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (!contributor.password_hash) {
+      if (contributor.reset_token) {
+        return res.status(401).json({
+          error: 'Please check your email to set your password before signing in.',
+          needs_password_setup: true,
+        });
+      }
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -403,12 +423,14 @@ async function googleCallback(req, res) {
     const profile = await profileRes.json();
     if (!profile.email) throw new Error('No email from Google');
 
-    const contributor = await findOrCreateOAuthUser({
+    const { contributor, isNew } = await findOrCreateOAuthUser({
       email: profile.email,
       name: profile.name || profile.email.split('@')[0],
       googleId: profile.sub,
       provider: 'google',
     });
+
+    if (isNew) issueOAuthSetPasswordEmail(contributor).catch(console.error);
 
     const jwt = signToken({
       id: contributor.id,
@@ -479,12 +501,14 @@ async function githubCallback(req, res) {
     }
     if (!email) throw new Error('No verified email from GitHub');
 
-    const contributor = await findOrCreateOAuthUser({
+    const { contributor, isNew } = await findOrCreateOAuthUser({
       email,
       name: ghUser.name || ghUser.login || email.split('@')[0],
       githubId: String(ghUser.id),
       provider: 'github',
     });
+
+    if (isNew) issueOAuthSetPasswordEmail(contributor).catch(console.error);
 
     const jwt = signToken({
       id: contributor.id,

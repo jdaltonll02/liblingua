@@ -32,10 +32,13 @@ function requireRole(...roles) {
   };
 }
 
+// Elevated access: translation/data/stats/language management
+// (RESEARCHER gets read+validate access but cannot manage users)
+const ELEVATED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'ANALYST', 'RESEARCHER'];
+
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
-    // Accept either a proper admin role OR the legacy is_admin boolean flag
-    if (!['SUPER_ADMIN', 'ADMIN'].includes(req.user.role) && !req.user.is_admin) {
+    if (!ELEVATED_ROLES.includes(req.user.role) && !req.user.is_admin) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();
