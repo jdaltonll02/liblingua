@@ -171,15 +171,14 @@ export default function Landing() {
         />
         <div className="max-w-5xl mx-auto relative">
           <span className="inline-block bg-liberia-red text-white text-xs font-bold px-4 py-1.5 rounded mb-6 uppercase tracking-widest">
-            Open NLP Research · West Africa
+            Open NLP Research · Liberia
           </span>
           <h1 className="text-5xl md:text-6xl font-black leading-tight mb-6 max-w-3xl">
             Preserving Liberia's<br />
             <span className="text-liberia-red">Languages</span> Through AI
           </h1>
           <p className="text-gray-300 text-lg mb-10 max-w-2xl leading-relaxed">
-            The world's first open machine-translation dataset for Liberian indigenous
-            languages — built by native speakers, for the next generation of NLP research.
+            Large Language Models (LLMs) like ChatGPT and Claude cannot understand low-resource languages. There are 18 languages spoken in Liberia. 16 are official Liberian languages. Fulani is not an official language but it is widely spoken. Kolokwa is a street language, and it is also known as local Liberian English. The key challenge here is, there is no publicly available dataset in low-resource Liberian Languages for NLP research.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link
@@ -213,9 +212,7 @@ export default function Landing() {
             </h2>
             <p className="text-gray-600 leading-relaxed mb-4">
               Liberia's indigenous languages are severely underrepresented in digital
-              infrastructure. With fewer than a handful of documented NLP resources,
-              over two million Liberians who speak these languages as their primary tongue
-              are invisible to modern AI systems.
+              infrastructure. There are no publicly available dataset. Dataset can be easily built when the texts and audio of a language are available online or when the text is available in a hard copy. The purpose of this research is to build the dataset from scratch. 
             </p>
             <p className="text-gray-600 leading-relaxed">
               This platform crowdsources parallel text from native speakers — producing
@@ -350,7 +347,7 @@ export default function Landing() {
             </div>
           </div>
           <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
-            <p>© {new Date().getFullYear()} liblingua. Open data for open research.</p>
+            <p>© {new Date().getFullYear()} liblingua. Creating data for open research.</p>
             <p>Built for NLP research · HuggingFace compatible</p>
           </div>
         </div>
