@@ -1,0 +1,47 @@
+<svg width="580" height="220" viewBox="0 0 580 220" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Liblingua logo — light background</title>
+  <defs>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D90000;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#A00000;stop-opacity:1"/>
+    </linearGradient>
+    <filter id="shadowLight" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="2" stdDeviation="5" flood-color="#00000033"/>
+    </filter>
+  </defs>
+
+  <rect width="580" height="220" fill="#f6f6f6"/>
+
+  <!-- Badge -->
+  <circle cx="110" cy="110" r="98" fill="url(#redGrad)" filter="url(#shadowLight)"/>
+  <circle cx="110" cy="110" r="88" fill="none" stroke="#ffffff18" stroke-width="2"/>
+
+  <!-- L -->
+  <rect x="64" y="63" width="11" height="82" rx="2" fill="#ffffff"/>
+  <rect x="64" y="136" width="38" height="11" rx="3" fill="#ffffff"/>
+  <rect x="60" y="61" width="19" height="6" rx="2" fill="#ffffff"/>
+
+  <!-- dash -->
+  <rect x="106" y="104" width="18" height="8" rx="4" fill="#ffaaaa"/>
+
+  <!-- G -->
+  <path d="M158,83 Q140,63 122,83 Q110,97 112,115 Q114,137 134,143 Q152,147 162,133 L162,117 L144,117"
+        fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- U -->
+  <path d="M170,75 L170,123 Q170,145 186,147 Q202,149 204,127 L204,75"
+        fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- A -->
+  <path d="M216,145 L234,75 L252,145" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="225" y1="119" x2="243" y2="119" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Wordmark -->
+  <text x="228" y="93"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="60" font-weight="700" fill="#CC0000" letter-spacing="-1">Lib<tspan fill="#111111">lingua</tspan></text>
+  <rect x="228" y="107" width="308" height="3" fill="#CC0000" rx="1"/>
+  <text x="228" y="137"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="11" fill="#aaaaaa" letter-spacing="4">LANGUAGE LEARNING PLATFORM</text>
+</svg>
