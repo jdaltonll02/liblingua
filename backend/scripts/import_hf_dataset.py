@@ -21,10 +21,9 @@ from collections import Counter
 import psycopg2
 from psycopg2.extras import execute_values
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://neondb_owner:npg_CQL6miSk0MIY@ep-steep-union-a420eeoj-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
-)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    sys.exit("ERROR: DATABASE_URL environment variable is required.")
 
 # opus_books English-pair configs to pull from (each is a different set of books)
 OPUS_BOOKS_CONFIGS = [
