@@ -304,7 +304,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto">
           <div className="grid sm:grid-cols-3 gap-8 mb-8 text-sm">
             <div>
-              <div className="font-black text-white mb-3 tracking-tight">liblingua</div>
+              <img src="/logo_black.svg" alt="liblingua" className="h-10 w-auto mb-3" />
               <p className="leading-relaxed">Open-source crowdsourced NLP dataset for eight Liberian languages. HuggingFace compatible.</p>
             </div>
             <div>
