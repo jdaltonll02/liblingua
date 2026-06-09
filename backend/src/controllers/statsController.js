@@ -17,12 +17,7 @@ async function getStats(_req, res, next) {
       audioPerLanguage,
     ] = await Promise.all([
       prisma.englishSample.count(),
-      prisma.contributor.count({
-        where: {
-          is_active:    true,
-          translations: { some: { is_validated: true } },
-        },
-      }),
+      prisma.contributor.count({ where: { is_active: true } }),
       prisma.$queryRaw`
         SELECT target_language, COUNT(*)::int AS total,
                SUM(CASE WHEN is_validated THEN 1 ELSE 0 END)::int AS validated

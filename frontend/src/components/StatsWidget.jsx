@@ -95,7 +95,7 @@ function TickerBar({ stats, error }) {
     { label: 'Contributors',  value: stats.total_contributors?.toLocaleString() },
     {
       label: 'Languages',
-      value: Object.values(stats.per_language || {}).filter((l) => l.total > 0).length || 0,
+      value: LANGUAGES.length,
     },
   ];
 
