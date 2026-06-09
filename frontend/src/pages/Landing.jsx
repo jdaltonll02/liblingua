@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar';
 import StatsWidget from '../components/StatsWidget';
 import { listResearchers } from '../api/researchers';
 import { getLanguages } from '../api/languages';
+import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 
 const LANG_META = {
   kpelle: { region: 'North-Central Liberia', speakers: '~487,000' },
@@ -151,6 +152,9 @@ function ResearchersSection() {
 }
 
 export default function Landing() {
+  const apiLangs = useLanguages();
+  const langCount = apiLangs.length > 0 ? apiLangs.length : FALLBACK_LANGUAGES.length;
+
   return (
     <div className="min-h-screen bg-white font-sans">
       <Navbar />
@@ -222,7 +226,7 @@ export default function Landing() {
 
           <div className="grid grid-cols-2 gap-4">
             {[
-              { v: '8',    l: 'Languages' },
+              { v: String(langCount), l: 'Languages' },
               { v: '6',    l: 'Domains' },
               { v: '3×',   l: 'Validated per Sample' },
               { v: '100%', l: 'Open Access' },
