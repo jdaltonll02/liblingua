@@ -1,9 +1,14 @@
 const prisma = require('../utils/prisma');
 
-const LANGUAGES = ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn', 'dan'];
-
 async function getStats(_req, res, next) {
   try {
+    const activeLanguages = await prisma.language.findMany({
+      where: { is_active: true },
+      select: { value: true },
+      orderBy: { sort_order: 'asc' },
+    });
+    const LANGUAGES = activeLanguages.map((l) => l.value);
+
     const [
       totalSamples,
       totalContributors,

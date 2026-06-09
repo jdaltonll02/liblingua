@@ -3,17 +3,18 @@ import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import StatsWidget from '../components/StatsWidget';
 import { listResearchers } from '../api/researchers';
+import { getLanguages } from '../api/languages';
 
-const LANGUAGES = [
-  { name: 'Kpelle',    region: 'North-Central Liberia', speakers: '~487,000' },
-  { name: 'Bassa',     region: 'Central Liberia',       speakers: '~347,000' },
-  { name: 'Grebo',     region: 'South-Eastern Liberia', speakers: '~387,000' },
-  { name: 'Vai',       region: 'Western Liberia',       speakers: '~104,000' },
-  { name: 'Mende',     region: 'Central Liberia',       speakers: '~178,000' },
-  { name: 'Loma',      region: 'Northern Liberia',      speakers: '~280,000' },
-  { name: 'Krahn',     region: 'Eastern Liberia',       speakers: '~150,000' },
-  { name: 'Dan (Gio)', region: 'Nimba County',          speakers: '~350,000' },
-];
+const LANG_META = {
+  kpelle: { region: 'North-Central Liberia', speakers: '~487,000' },
+  bassa:  { region: 'Central Liberia',       speakers: '~347,000' },
+  grebo:  { region: 'South-Eastern Liberia', speakers: '~387,000' },
+  vai:    { region: 'Western Liberia',       speakers: '~104,000' },
+  mende:  { region: 'Central Liberia',       speakers: '~178,000' },
+  loma:   { region: 'Northern Liberia',      speakers: '~280,000' },
+  krahn:  { region: 'Eastern Liberia',       speakers: '~150,000' },
+  dan:    { region: 'Nimba County',          speakers: '~350,000' },
+};
 
 const STEPS = [
   {
@@ -41,6 +42,36 @@ const DOMAINS = [
   { name: 'Conversational', icon: '💬', desc: 'Everyday phrases and dialogue' },
   { name: 'General', icon: '🌍', desc: 'General knowledge and broad topics' },
 ];
+
+function SupportedLanguagesSection() {
+  const [languages, setLanguages] = useState([]);
+
+  useEffect(() => {
+    getLanguages()
+      .then((res) => setLanguages(res.data.filter((l) => l.is_active)))
+      .catch(() => {});
+  }, []);
+
+  const list = languages.length > 0
+    ? languages
+    : Object.entries(LANG_META).map(([value, meta]) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1), ...meta }));
+
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {list.map((lang) => {
+        const meta = LANG_META[lang.value] || {};
+        return (
+          <div key={lang.value}
+            className="bg-white border border-gray-200 p-5 hover:border-liberia-red transition-colors">
+            <div className="text-lg font-bold text-liberia-blue mb-1">{lang.label}</div>
+            {meta.region   && <div className="text-xs text-gray-400 mb-2">{meta.region}</div>}
+            {meta.speakers && <div className="text-xs font-semibold text-liberia-red">{meta.speakers} speakers</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ResearchersSection() {
   const [researchers, setResearchers] = useState([]);
@@ -211,20 +242,9 @@ export default function Landing() {
           <div className="section-rule" />
           <h2 className="text-4xl font-black text-liberia-blue mb-2">Supported Languages</h2>
           <p className="text-gray-500 mb-10">
-            Contribute translations for any of these eight indigenous Liberian languages.
+            Contribute translations for any of these indigenous Liberian languages.
           </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {LANGUAGES.map((lang) => (
-              <div
-                key={lang.name}
-                className="bg-white border border-gray-200 p-5 hover:border-liberia-red transition-colors"
-              >
-                <div className="text-lg font-bold text-liberia-blue mb-1">{lang.name}</div>
-                <div className="text-xs text-gray-400 mb-2">{lang.region}</div>
-                <div className="text-xs font-semibold text-liberia-red">{lang.speakers} speakers</div>
-              </div>
-            ))}
-          </div>
+          <SupportedLanguagesSection />
         </div>
       </section>
 

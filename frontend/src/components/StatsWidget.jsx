@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getStats } from '../api/stats';
-import { LANGUAGES } from './LanguageSelector';
+import { useLanguages, LANGUAGES } from './LanguageSelector';
 
 /**
  * variant:
@@ -11,6 +11,8 @@ import { LANGUAGES } from './LanguageSelector';
 export default function StatsWidget({ variant = 'light' }) {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
+  const apiLangs = useLanguages();
+  const langCount = apiLangs.length > 0 ? apiLangs.length : LANGUAGES.length;
 
   useEffect(() => {
     getStats()
@@ -18,7 +20,7 @@ export default function StatsWidget({ variant = 'light' }) {
       .catch(() => setError('Could not load stats'));
   }, []);
 
-  if (variant === 'ticker') return <TickerBar stats={stats} error={error} />;
+  if (variant === 'ticker') return <TickerBar stats={stats} error={error} langCount={langCount} />;
 
   if (error) return <p className="text-sm text-red-400">{error}</p>;
   if (!stats) return <SkeletonGrid dark={variant === 'dark'} />;
@@ -58,7 +60,7 @@ export default function StatsWidget({ variant = 'light' }) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {LANGUAGES.map((lang) => {
+        {(apiLangs.length > 0 ? apiLangs : LANGUAGES).map((lang) => {
           const data = stats.per_language?.[lang.value] || { total: 0, validated: 0 };
           return (
             <div key={lang.value} className={`${cardBase} text-center`}>
@@ -74,7 +76,7 @@ export default function StatsWidget({ variant = 'light' }) {
 }
 
 // ── Compact single-row ticker for the red bar ─────────────────────────────────
-function TickerBar({ stats, error }) {
+function TickerBar({ stats, error, langCount }) {
   if (error || !stats) {
     const items = ['Samples', 'Translations', 'Contributors'];
     return (
@@ -95,7 +97,7 @@ function TickerBar({ stats, error }) {
     { label: 'Contributors',  value: stats.total_contributors?.toLocaleString() },
     {
       label: 'Languages',
-      value: LANGUAGES.length,
+      value: langCount,
     },
   ];
 

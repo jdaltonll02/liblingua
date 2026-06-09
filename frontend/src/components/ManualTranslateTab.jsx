@@ -1,12 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createManualTranslation, listManualTranslations, deleteManualTranslation } from '../api/admin';
-
-const MT_LANGUAGES = [
-  { value: 'kpelle', label: 'Kpelle'    }, { value: 'bassa',  label: 'Bassa'     },
-  { value: 'grebo',  label: 'Grebo'     }, { value: 'vai',    label: 'Vai'       },
-  { value: 'mende',  label: 'Mende'     }, { value: 'loma',   label: 'Loma'      },
-  { value: 'krahn',  label: 'Krahn'     }, { value: 'dan',    label: 'Dan (Gio)' },
-];
+import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from './LanguageSelector';
 const MT_DOMAINS      = ['general','health','legal','education','news','conversational'];
 const MT_DIFFICULTIES = ['easy','medium','hard'];
 
@@ -16,14 +10,17 @@ const DOMAIN_BADGE = {
   conversational: 'bg-pink-100 text-pink-700', general: 'bg-gray-100 text-gray-600',
 };
 
-const EMPTY = {
+const EMPTY_FORM = (firstLang = '') => ({
   source_text: '', domain: 'general', difficulty: 'medium',
-  target_language: 'kpelle', dialect: '', translated_text: '',
+  target_language: firstLang, dialect: '', translated_text: '',
   quality_score: '1.0', is_gold_standard: false,
-};
+});
 
 export default function ManualTranslateTab() {
-  const [form, setForm]           = useState(EMPTY);
+  const apiLangs = useLanguages();
+  const MT_LANGUAGES = apiLangs.length > 0 ? apiLangs : FALLBACK_LANGUAGES;
+
+  const [form, setForm]           = useState(() => EMPTY_FORM(MT_LANGUAGES[0]?.value || ''));
   const [saving, setSaving]       = useState(false);
   const [saveMsg, setSaveMsg]     = useState('');
   const [saveErr, setSaveErr]     = useState('');
@@ -33,6 +30,13 @@ export default function ManualTranslateTab() {
   const [histLoading, setHistLoading] = useState(false);
   const [filterLang, setFilterLang]   = useState('');
   const [deleting, setDeleting]       = useState(null);
+
+  // Once API languages load, seed the form with the first language if none set
+  useEffect(() => {
+    if (MT_LANGUAGES.length > 0 && !form.target_language) {
+      setForm((f) => ({ ...f, target_language: MT_LANGUAGES[0].value }));
+    }
+  }, [MT_LANGUAGES.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setF = (k) => (e) =>
     setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
