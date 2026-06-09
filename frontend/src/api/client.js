@@ -3,7 +3,8 @@ import axios from 'axios';
 const api = axios.create({
   baseURL:         '/api',
   withCredentials: true, // send the httpOnly cookie on every request
-  headers:         { 'Content-Type': 'application/json' },
+  // No default Content-Type — axios sets application/json for plain objects
+  // and multipart/form-data (with boundary) automatically for FormData.
 });
 
 // No Authorization header interceptor needed — the browser sends the cookie automatically.

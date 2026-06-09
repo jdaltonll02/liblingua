@@ -41,7 +41,7 @@ function buildDiskStorage() {
       const lang          = req.body.target_language || 'unknown';
       const sampleId      = req.body.sample_id       || 'unknown';
       const contributorId = req.user?.id             || 'unknown';
-      const dir = path.join(__dirname, '../../../uploads/audio', lang, sampleId, contributorId);
+      const dir = path.join(__dirname, '../../uploads/audio', lang, sampleId, contributorId);
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
@@ -90,7 +90,7 @@ function buildAvatarS3Storage(resolveId) {
 function buildAvatarDiskStorage(resolveId) {
   return multer.diskStorage({
     destination(_req, _file, cb) {
-      const dir = path.join(__dirname, '../../../uploads/avatars');
+      const dir = path.join(__dirname, '../../uploads/avatars');
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },

@@ -61,7 +61,7 @@ app.use((_req, res, next) => {
 app.use(activityLogger);
 
 // Serve uploaded audio files
-app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',         authLimiter,        authRoutes);
