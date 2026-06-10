@@ -57,7 +57,7 @@ function buildDiskStorage() {
 const audioFilter = (_req, file, cb) => {
   const allowed = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/webm', 'audio/ogg'];
   if (allowed.includes(file.mimetype)) cb(null, true);
-  else cb(new Error('Only WAV/MP3/WebM audio files are accepted'));
+  else cb(Object.assign(new Error('Only WAV/MP3/WebM audio files are accepted'), { status: 400 }));
 };
 
 // ── Avatar storage ────────────────────────────────────────────────────────────
