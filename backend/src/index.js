@@ -29,6 +29,9 @@ const { authLimiter, translationLimiter, generalLimiter } = require('./middlewar
 
 const app = express();
 
+// Remove framework fingerprint
+app.disable('x-powered-by');
+
 // Trust the first proxy (nginx) so express-rate-limit can read the real
 // client IP from X-Forwarded-For instead of throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
 app.set('trust proxy', 1);
@@ -64,7 +67,7 @@ app.use((_req, res, next) => {
 app.use(activityLogger);
 
 // Serve uploaded audio files
-app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',         authLimiter,        authRoutes);
@@ -109,7 +112,14 @@ app.use((req, res) => {
 app.use(sentryError);
 
 app.use((err, req, res, _next) => {
-  const status = err.status || 500;
+  // Handle multer-specific errors with appropriate HTTP status codes
+  const multer = require('multer');
+  if (err instanceof multer.MulterError) {
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(status).json({ error: err.message });
+  }
+
+  const status = err.status || err.statusCode || 500;
   const code = err.code || 'INTERNAL_ERROR';
 
   logger.error('unhandled_error', {

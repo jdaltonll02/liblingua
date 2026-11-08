@@ -3,20 +3,7 @@ import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { listContributors } from '../api/contributors';
 import { getStats } from '../api/stats';
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const LANGUAGES = [
-  { value: '',        label: 'All Languages' },
-  { value: 'kpelle',  label: 'Kpelle' },
-  { value: 'bassa',   label: 'Bassa' },
-  { value: 'grebo',   label: 'Grebo' },
-  { value: 'vai',     label: 'Vai' },
-  { value: 'mende',   label: 'Mende' },
-  { value: 'loma',    label: 'Loma' },
-  { value: 'krahn',   label: 'Krahn' },
-  { value: 'dan',     label: 'Dan (Gio)' },
-];
+import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 
 const SORT_OPTIONS = [
   { value: 'reputation',    label: 'Highest Reputation' },
@@ -169,6 +156,12 @@ function ContributorCard({ contributor: c, rank }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Contributors() {
+  const apiLangs = useLanguages();
+  const LANGUAGES = [
+    { value: '', label: 'All Languages' },
+    ...(apiLangs.length > 0 ? apiLangs : FALLBACK_LANGUAGES),
+  ];
+
   const [contributors, setContributors] = useState([]);
   const [meta, setMeta]                 = useState(null);
   const [page, setPage]                 = useState(1);

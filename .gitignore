@@ -17,6 +17,7 @@ backend/node_modules/.prisma/
 
 # Uploaded audio files (large binaries — store in S3/object storage for production)
 uploads/audio/*/*/
+backend/uploads/
 
 # Log files (written by Winston — never commit)
 logs/

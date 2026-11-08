@@ -15,12 +15,8 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link
-            to="/"
-            className="font-black text-xl tracking-tight hover:text-gray-300 transition-colors flex items-center gap-1"
-          >
-            <span className="text-liberia-red font-black text-2xl leading-none">lib</span>
-            <span className="text-white">lingua</span>
+          <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
+            <img src="/logo_black.svg" alt="liblingua" className="h-9 w-auto" />
           </Link>
 
           {/* Nav links */}

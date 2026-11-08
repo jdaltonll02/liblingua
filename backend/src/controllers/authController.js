@@ -185,6 +185,10 @@ async function login(req, res, next) {
       });
     }
 
+    if (!contributor.is_active) {
+      return res.status(401).json({ error: 'Account deactivated. Please contact support.' });
+    }
+
     const token = signToken({
       id: contributor.id,
       email: contributor.email,

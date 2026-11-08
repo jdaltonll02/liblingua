@@ -3,17 +3,19 @@ import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import StatsWidget from '../components/StatsWidget';
 import { listResearchers } from '../api/researchers';
+import { getLanguages } from '../api/languages';
+import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 
-const LANGUAGES = [
-  { name: 'Kpelle',    region: 'North-Central Liberia', speakers: '~487,000' },
-  { name: 'Bassa',     region: 'Central Liberia',       speakers: '~347,000' },
-  { name: 'Grebo',     region: 'South-Eastern Liberia', speakers: '~387,000' },
-  { name: 'Vai',       region: 'Western Liberia',       speakers: '~104,000' },
-  { name: 'Mende',     region: 'Central Liberia',       speakers: '~178,000' },
-  { name: 'Loma',      region: 'Northern Liberia',      speakers: '~280,000' },
-  { name: 'Krahn',     region: 'Eastern Liberia',       speakers: '~150,000' },
-  { name: 'Dan (Gio)', region: 'Nimba County',          speakers: '~350,000' },
-];
+const LANG_META = {
+  kpelle: { region: 'North-Central Liberia', speakers: '~487,000' },
+  bassa:  { region: 'Central Liberia',       speakers: '~347,000' },
+  grebo:  { region: 'South-Eastern Liberia', speakers: '~387,000' },
+  vai:    { region: 'Western Liberia',       speakers: '~104,000' },
+  mende:  { region: 'Central Liberia',       speakers: '~178,000' },
+  loma:   { region: 'Northern Liberia',      speakers: '~280,000' },
+  krahn:  { region: 'Eastern Liberia',       speakers: '~150,000' },
+  dan:    { region: 'Nimba County',          speakers: '~350,000' },
+};
 
 const STEPS = [
   {
@@ -41,6 +43,36 @@ const DOMAINS = [
   { name: 'Conversational', icon: '💬', desc: 'Everyday phrases and dialogue' },
   { name: 'General', icon: '🌍', desc: 'General knowledge and broad topics' },
 ];
+
+function SupportedLanguagesSection() {
+  const [languages, setLanguages] = useState([]);
+
+  useEffect(() => {
+    getLanguages()
+      .then((res) => setLanguages(res.data.filter((l) => l.is_active)))
+      .catch(() => {});
+  }, []);
+
+  const list = languages.length > 0
+    ? languages
+    : Object.entries(LANG_META).map(([value, meta]) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1), ...meta }));
+
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {list.map((lang) => {
+        const meta = LANG_META[lang.value] || {};
+        return (
+          <div key={lang.value}
+            className="bg-white border border-gray-200 p-5 hover:border-liberia-red transition-colors">
+            <div className="text-lg font-bold text-liberia-blue mb-1">{lang.label}</div>
+            {meta.region   && <div className="text-xs text-gray-400 mb-2">{meta.region}</div>}
+            {meta.speakers && <div className="text-xs font-semibold text-liberia-red">{meta.speakers} speakers</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ResearchersSection() {
   const [researchers, setResearchers] = useState([]);
@@ -120,6 +152,9 @@ function ResearchersSection() {
 }
 
 export default function Landing() {
+  const apiLangs = useLanguages();
+  const langCount = apiLangs.length > 0 ? apiLangs.length : FALLBACK_LANGUAGES.length;
+
   return (
     <div className="min-h-screen bg-white font-sans">
       <Navbar />
@@ -136,15 +171,14 @@ export default function Landing() {
         />
         <div className="max-w-5xl mx-auto relative">
           <span className="inline-block bg-liberia-red text-white text-xs font-bold px-4 py-1.5 rounded mb-6 uppercase tracking-widest">
-            Open NLP Research · West Africa
+            Open NLP Research · Liberia
           </span>
           <h1 className="text-5xl md:text-6xl font-black leading-tight mb-6 max-w-3xl">
             Preserving Liberia's<br />
             <span className="text-liberia-red">Languages</span> Through AI
           </h1>
           <p className="text-gray-300 text-lg mb-10 max-w-2xl leading-relaxed">
-            The world's first open machine-translation dataset for Liberian indigenous
-            languages — built by native speakers, for the next generation of NLP research.
+            Large Language Models (LLMs) like ChatGPT and Claude cannot understand low-resource languages. There are 18 languages spoken in Liberia. 16 are official Liberian languages. Fulani is not an official language but it is widely spoken. Kolokwa is a street language, and it is also known as local Liberian English. The key challenge here is, there is no publicly available dataset in low-resource Liberian Languages for NLP research.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link
@@ -178,9 +212,7 @@ export default function Landing() {
             </h2>
             <p className="text-gray-600 leading-relaxed mb-4">
               Liberia's indigenous languages are severely underrepresented in digital
-              infrastructure. With fewer than a handful of documented NLP resources,
-              over two million Liberians who speak these languages as their primary tongue
-              are invisible to modern AI systems.
+              infrastructure. There are no publicly available dataset. Dataset can be easily built when the texts and audio of a language are available online or when the text is available in a hard copy. The purpose of this research is to build the dataset from scratch.
             </p>
             <p className="text-gray-600 leading-relaxed">
               This platform crowdsources parallel text from native speakers — producing
@@ -191,7 +223,7 @@ export default function Landing() {
 
           <div className="grid grid-cols-2 gap-4">
             {[
-              { v: '8',    l: 'Languages' },
+              { v: String(langCount), l: 'Languages' },
               { v: '6',    l: 'Domains' },
               { v: '3×',   l: 'Validated per Sample' },
               { v: '100%', l: 'Open Access' },
@@ -211,20 +243,9 @@ export default function Landing() {
           <div className="section-rule" />
           <h2 className="text-4xl font-black text-liberia-blue mb-2">Supported Languages</h2>
           <p className="text-gray-500 mb-10">
-            Contribute translations for any of these eight indigenous Liberian languages.
+            Contribute translations for any of these indigenous Liberian languages.
           </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {LANGUAGES.map((lang) => (
-              <div
-                key={lang.name}
-                className="bg-white border border-gray-200 p-5 hover:border-liberia-red transition-colors"
-              >
-                <div className="text-lg font-bold text-liberia-blue mb-1">{lang.name}</div>
-                <div className="text-xs text-gray-400 mb-2">{lang.region}</div>
-                <div className="text-xs font-semibold text-liberia-red">{lang.speakers} speakers</div>
-              </div>
-            ))}
-          </div>
+          <SupportedLanguagesSection />
         </div>
       </section>
 
@@ -304,7 +325,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto">
           <div className="grid sm:grid-cols-3 gap-8 mb-8 text-sm">
             <div>
-              <div className="font-black text-white mb-3 tracking-tight">liblingua</div>
+              <img src="/logo_black.svg" alt="liblingua" className="h-10 w-auto mb-3" />
               <p className="leading-relaxed">Open-source crowdsourced NLP dataset for eight Liberian languages. HuggingFace compatible.</p>
             </div>
             <div>
@@ -326,7 +347,7 @@ export default function Landing() {
             </div>
           </div>
           <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
-            <p>© {new Date().getFullYear()} liblingua. Open data for open research.</p>
+            <p>© {new Date().getFullYear()} liblingua. Creating data for open research.</p>
             <p>Built for NLP research · HuggingFace compatible</p>
           </div>
         </div>

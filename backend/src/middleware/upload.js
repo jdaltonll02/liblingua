@@ -41,7 +41,7 @@ function buildDiskStorage() {
       const lang          = req.body.target_language || 'unknown';
       const sampleId      = req.body.sample_id       || 'unknown';
       const contributorId = req.user?.id             || 'unknown';
-      const dir = path.join(__dirname, '../../../uploads/audio', lang, sampleId, contributorId);
+      const dir = path.join(__dirname, '../../uploads/audio', lang, sampleId, contributorId);
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
@@ -57,7 +57,7 @@ function buildDiskStorage() {
 const audioFilter = (_req, file, cb) => {
   const allowed = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/webm', 'audio/ogg'];
   if (allowed.includes(file.mimetype)) cb(null, true);
-  else cb(new Error('Only WAV/MP3/WebM audio files are accepted'));
+  else cb(Object.assign(new Error('Only WAV/MP3/WebM audio files are accepted'), { status: 400 }));
 };
 
 // ── Avatar storage ────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ function buildAvatarS3Storage(resolveId) {
 function buildAvatarDiskStorage(resolveId) {
   return multer.diskStorage({
     destination(_req, _file, cb) {
-      const dir = path.join(__dirname, '../../../uploads/avatars');
+      const dir = path.join(__dirname, '../../uploads/avatars');
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },

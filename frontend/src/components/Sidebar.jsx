@@ -28,9 +28,8 @@ export default function Sidebar() {
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col bg-white border-r border-gray-200 min-h-screen">
       {/* Logo */}
-      <a href="/" className="flex items-center gap-2 px-4 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors">
-        <span className="text-liberia-red font-black text-2xl leading-none">L</span>
-        <span className="font-bold text-sm text-gray-800 leading-tight">lib<span className="text-liberia-red">lingua</span></span>
+      <a href="/" className="flex items-center px-4 py-4 border-b border-gray-100 hover:opacity-80 transition-opacity">
+        <img src="/logo_black.svg" alt="liblingua" className="h-10 w-auto" />
       </a>
 
       {/* Nav */}

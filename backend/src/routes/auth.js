@@ -25,7 +25,7 @@ router.post(
   '/register',
   [
     body('name').trim().notEmpty().withMessage('Name is required'),
-    body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required'),
+    body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required'),
     body('password')
       .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
       .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
@@ -43,7 +43,7 @@ router.post(
 router.post(
   '/login',
   [
-    body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required'),
+    body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required'),
     body('password').notEmpty().withMessage('Password is required'),
   ],
   validate,
@@ -59,7 +59,7 @@ router.get('/verify/:token', verifyEmail);
 
 router.post(
   '/resend-verification',
-  [body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
+  [body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
   validate,
   resendVerification,
 );
@@ -102,7 +102,7 @@ router.patch(
 router.post(
   '/change-email',
   requireAuth,
-  [body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
+  [body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
   validate,
   changeEmail,
 );
@@ -111,7 +111,7 @@ router.post(
 
 router.post(
   '/forgot-password',
-  [body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
+  [body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
   validate,
   forgotPassword,
 );
@@ -170,7 +170,7 @@ router.get('/github/callback', githubCallback);
 router.post(
   '/promote',
   requireAdmin,
-  [body('email').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
+  [body('email').isString().withMessage('Valid email required').isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email required')],
   validate,
   promoteToAdmin,
 );

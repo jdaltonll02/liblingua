@@ -1,4 +1,5 @@
 jest.mock('../utils/prisma', () => ({
+  language: { findMany: jest.fn() },
   englishSample: {
     count:   jest.fn(),
     groupBy: jest.fn(),
@@ -26,6 +27,10 @@ function setupMocks({
   lockedByLang   = [],
   domainBreakdown = [],
 } = {}) {
+  prisma.language.findMany.mockResolvedValue(
+    ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn', 'dan']
+      .map((value) => ({ value }))
+  );
   prisma.englishSample.count.mockResolvedValue(samples);
   prisma.contributor.count.mockResolvedValue(contributors);
   const totals = perLang.map((row) => ({
