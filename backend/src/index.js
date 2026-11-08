@@ -37,15 +37,6 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 // Initialize Sentry early
-// TEMP diagnostics: log arrival of every request with the worker pid.
-if (process.env.REQ_TRACE !== 'off') {
-  app.use((req, res, next) => {
-    logger.info('req_in', { pid: process.pid, path: req.originalUrl });
-    res.on('close', () => logger.info('req_out', { pid: process.pid, path: req.originalUrl, status: res.statusCode, finished: res.writableFinished }));
-    next();
-  });
-}
-
 initSentry();
 const [sentryRequest, sentryError] = getSentryMiddleware();
 app.use(sentryRequest);
