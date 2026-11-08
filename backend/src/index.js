@@ -56,7 +56,7 @@ app.use((_req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data: https:; media-src 'self' blob: https:; " +
+    "img-src 'self' data: blob: https:;media-src 'self' blob: https:; " +
     "connect-src 'self' https:; font-src 'self' data:; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   );

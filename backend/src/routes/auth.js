@@ -90,7 +90,10 @@ router.patch(
     body('native_language').optional().trim().notEmpty(),
     body('native_dialect').optional(),
     body('region_of_origin').optional().trim().notEmpty(),
-    body('age_group').optional().isIn(AGE_GROUPS).withMessage(`Age group must be one of: ${AGE_GROUPS.join(', ')}`),
+    // Empty = unchanged. Accept both the form values (18_35) and the stored enum (age_18_35).
+    body('age_group').optional({ values: 'falsy' })
+      .isIn([...AGE_GROUPS, ...AGE_GROUPS.map((g) => (g === 'under_18' ? g : `age_${g}`))])
+      .withMessage(`Age group must be one of: ${AGE_GROUPS.join(', ')}`),
     body('is_l1_speaker').optional(),
   ],
   validate,

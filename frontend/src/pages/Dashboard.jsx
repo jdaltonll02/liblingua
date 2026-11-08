@@ -114,7 +114,8 @@ export default function Dashboard() {
         native_language:  user.native_language  || '',
         native_dialect:   user.native_dialect   || '',
         region_of_origin: user.region_of_origin || '',
-        age_group:        user.age_group        || '',
+        // DB enum is age_18_35 etc.; the select uses 18_35
+        age_group:        (user.age_group || '').replace(/^age_/, ''),
         is_l1_speaker:    Boolean(user.is_l1_speaker),
         profession:       user.profession       || '',
       });
