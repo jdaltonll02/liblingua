@@ -141,7 +141,9 @@ app.use((err, req, res, _next) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 // Guard so that importing this file in tests does not attempt to bind the port.
-if (require.main === module) {
+// Do not use `require.main === module`: Hostinger/LiteSpeed loads this file via
+// lsnode.js, so require.main is the launcher and the server would never listen.
+if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
     logger.info('server_start', { port: PORT, env: process.env.NODE_ENV || 'development' });
