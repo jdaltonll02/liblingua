@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const prisma = require('../utils/prisma');
 const { signToken, verifyToken } = require('../utils/jwt');
 const { sendVerificationEmail, sendInvitationEmail } = require('../services/emailService');
+const { fileUrl } = require('../middleware/upload');
 
 const AGE_GROUP_MAP = {
   under_18: 'under_18',
@@ -360,8 +361,7 @@ async function updateProfile(req, res, next) {
 
     // Avatar uploaded via multipart — req.file is set by uploadAvatar() middleware
     if (req.file) {
-      data.photo_url = req.file.location  // S3
-        ?? req.file.path.replace(/\\/g, '/').replace(/^.*uploads\//, 'uploads/'); // disk
+      data.photo_url = fileUrl(req.file);
     }
 
     if (Object.keys(data).length === 0) {

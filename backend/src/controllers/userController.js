@@ -3,6 +3,7 @@ const prisma = require('../utils/prisma');
 const { errors } = require('../utils/errors');
 const logger = require('../utils/logger');
 const { sendInvitationEmail } = require('../services/emailService');
+const { fileUrl } = require('../middleware/upload');
 
 async function listUsers(req, res, next) {
   try {
@@ -173,8 +174,7 @@ async function updateUser(req, res, next) {
     });
 
     if (req.file) {
-      const newPhotoUrl = req.file.location
-        ?? req.file.path.replace(/\\/g, '/').replace(/^.*uploads\//, 'uploads/');
+      const newPhotoUrl = fileUrl(req.file);
       if (user.photo_url !== newPhotoUrl) {
         changes.photo_url = { old: user.photo_url, new: newPhotoUrl };
         updates.photo_url = newPhotoUrl;

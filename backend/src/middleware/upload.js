@@ -4,6 +4,21 @@ const fs     = require('fs');
 
 const USE_S3 = Boolean(process.env.S3_BUCKET);
 
+/**
+ * Public URL to store for an uploaded file.
+ * S3_PUBLIC_URL (e.g. https://media.example.com or an R2 r2.dev URL) is used
+ * when set, because the S3 API endpoint returned in file.location is private
+ * on R2. Disk uploads return a root-relative 'uploads/...' path.
+ */
+function fileUrl(file) {
+  if (!file) return null;
+  if (file.key || file.location) {
+    const base = (process.env.S3_PUBLIC_URL || '').replace(/\/+$/, '');
+    return base ? `${base}/${file.key}` : file.location;
+  }
+  return file.path.replace(/\\/g, '/').replace(/^.*uploads\//, 'uploads/');
+}
+
 // ── S3 storage (loaded lazily so the app starts without AWS creds) ─────────
 function buildS3Storage() {
   const { S3Client } = require('@aws-sdk/client-s3');
@@ -16,7 +31,7 @@ function buildS3Storage() {
       accessKeyId:     process.env.S3_ACCESS_KEY,
       secretAccessKey: process.env.S3_SECRET_KEY,
     },
-    forcePathStyle: Boolean(process.env.S3_FORCE_PATH_STYLE),
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   });
 
   return multerS3({
@@ -73,7 +88,7 @@ function buildAvatarS3Storage(resolveId) {
       accessKeyId:     process.env.S3_ACCESS_KEY,
       secretAccessKey: process.env.S3_SECRET_KEY,
     },
-    forcePathStyle: Boolean(process.env.S3_FORCE_PATH_STYLE),
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   });
 
   return multerS3({
@@ -140,9 +155,7 @@ function resolveAudioPaths(files) {
   if (!files) return { audioPath: null, englishAudioPath: null };
 
   function resolve(file) {
-    if (!file) return null;
-    if (USE_S3) return file.location;
-    return file.path.replace(/\\/g, '/').replace(/^.*uploads\//, 'uploads/');
+    return fileUrl(file);
   }
 
   return {
@@ -151,4 +164,4 @@ function resolveAudioPaths(files) {
   };
 }
 
-module.exports = { uploadDualAudio, resolveAudioPaths, uploadAvatar };
+module.exports = { uploadDualAudio, resolveAudioPaths, uploadAvatar, fileUrl };

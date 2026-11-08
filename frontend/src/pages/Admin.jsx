@@ -226,13 +226,13 @@ function TranslationsTab() {
                   {t.english_audio_path && (
                     <div className="text-xs">
                       <p className="text-gray-400 mb-1">English audio</p>
-                      <audio controls src={`/${t.english_audio_path}`} className="h-8 max-w-xs" />
+                      <audio controls src={resolvePicUrl(t.english_audio_path)} className="h-8 max-w-xs" />
                     </div>
                   )}
                   {t.audio_path && (
                     <div className="text-xs">
                       <p className="text-gray-400 mb-1">{t.target_language} audio</p>
-                      <audio controls src={`/${t.audio_path}`} className="h-8 max-w-xs" />
+                      <audio controls src={resolvePicUrl(t.audio_path)} className="h-8 max-w-xs" />
                     </div>
                   )}
                 </div>

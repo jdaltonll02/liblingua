@@ -13,12 +13,12 @@ Hostinger Email works with the existing Nodemailer service. User uploads must us
 - Plan: Business Web Hosting (`hostinger_business_v7`)
 - Production domain: `liblingua.gibtechs.com`
 - Domain status: accessible in Hostinger, with no existing website occupying it
-- Existing database: `u549727073_ldcdb`
-- Existing database user: `u549727073_ldcdadmin`
+- Production database: `u549727073_liblingua`
+- Production database user: `u549727073_dbadmin`
 - App-side database host: `127.0.0.1:3306` (do not use the external `srv*.hstgr.io` hostname from the deployed app)
 - Database quota: 3 GB
 
-No deployment is performed by this preparation. Create `liblingua.gibtechs.com` as a new Node.js Web App on the current Business hosting order; it is a clean target and does not require replacing the existing `ldclib.org` website. The existing database is currently associated with `ldclib.org`, but it is under the same hosting account and can be reused from the new app through `127.0.0.1`.
+The app is deployed as a Node.js Web App on the Business hosting order, imported from GitHub (`jdaltonll02/liblingua`, branch `main`) with auto-deployment on push.
 
 ## Hostinger build settings
 
@@ -30,7 +30,7 @@ Use these settings when creating/importing the Web App:
 | Node version | 20.x |
 | Root directory | `.` |
 | Package manager | npm |
-| Build script | `build` / `npm run build` |
+| Build script | `build` / `npm run build` (required: if empty, Hostinger only runs `npm install` at the root and the app crashes with `Cannot find module 'dotenv'`) |
 | Entry file | `backend/src/index.js` |
 | Output directory | leave empty |
 
@@ -47,7 +47,8 @@ Important details:
 - Create or select the Hostinger mailbox that will send LibLingua messages. Put its complete email address in both `SMTP_USER` and `SMTP_FROM`. Hostinger SMTP uses port 465 with `SMTP_SECURE=true`; port 587 with `SMTP_SECURE=false` is the fallback.
 - `FRONTEND_URL` and `OAUTH_CALLBACK_BASE` must be the final HTTPS origin without a trailing slash.
 - Configure OAuth callback URLs as `https://liblingua.gibtechs.com/api/auth/google/callback` and `https://liblingua.gibtechs.com/api/auth/github/callback` if those providers are enabled.
-- `S3_*` values may point to AWS S3, Cloudflare R2, Backblaze B2, or another S3-compatible service. Confirm that uploaded objects are publicly readable or delivered through an appropriate public/CDN URL, because the application stores the returned object URL.
+- `S3_*` values may point to AWS S3, Cloudflare R2, Backblaze B2, or another S3-compatible service. `S3_ENDPOINT` is the account endpoint without the bucket name. For R2 set `S3_FORCE_PATH_STYLE=true`.
+- `S3_PUBLIC_URL` is the public base URL used for stored file links. R2's S3 API endpoint is private, so without it uploaded avatars and audio will not load in browsers. In Cloudflare, enable public access on the bucket (custom domain such as `media.gibtechs.com`, or the `r2.dev` URL) and put that URL here. Add a bucket CORS policy allowing `GET`/`HEAD` from `https://liblingua.gibtechs.com`.
 - `VITE_SENTRY_DSN` is a build-time value. Changing it requires a redeploy; ordinary server secrets only require an application restart.
 
 ## Database initialization and migration
@@ -58,7 +59,19 @@ The Hostinger build runs `prisma migrate deploy` against `backend/prisma-hosting
 2. If it already contains this application's tables but has no `_prisma_migrations` history, do not deploy yet; baseline or recreate the database after making a backup.
 3. If production data still lives in PostgreSQL, migrate that data separately. Do not point the MariaDB build at a PostgreSQL URL. Export tables while preserving UUID primary/foreign keys, import them in dependency order, verify row counts and relationships, then deploy the app.
 
-The schema migration intentionally does not run the seed script. Seeding creates a privileged admin and sample content and must be an explicit one-time decision. If required after the schema is ready, run `npm run db:seed` with `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, and `DATABASE_URL` set in a controlled environment.
+The schema migration intentionally does not run the seed script. Seeding creates the language list, a `SUPER_ADMIN` account and 50 starter samples, and must be an explicit one-time decision (it is idempotent). Run it over SSH (hPanel → Advanced → SSH Access) from the deployed app. Node is not on the SSH `PATH`, so use the full binary path, and prefix the line with a space to keep the password out of shell history:
+
+```bash
+cd ~/domains/liblingua.gibtechs.com/hbuilds/current/nodejs
+ NODE_ENV=production \
+ DATABASE_URL='mysql://USER:URL_ENCODED_PASSWORD@127.0.0.1:3306/DB_NAME' \
+ SEED_ADMIN_EMAIL='admin@example.com' \
+ SEED_ADMIN_NAME='Full Name' \
+ SEED_ADMIN_PASSWORD='at-least-12-characters' \
+ /opt/alt/alt-nodejs20/root/usr/bin/node scripts/seed.js
+```
+
+In production the script refuses to run without a real email and a password of 12+ characters.
 
 ## First-deployment checks
 
@@ -71,6 +84,16 @@ After Hostinger reports the build complete:
 5. Upload an avatar and audio recording, then confirm both still load after a redeploy.
 6. Exercise `/api/stats` and sample selection to verify MariaDB query compatibility.
 7. Review Hostinger runtime logs for Prisma, SMTP, CORS, or object-storage errors.
+
+## Troubleshooting (issues hit during the first deployment)
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| 503 page; runtime log shows `Cannot find module 'dotenv'` | Build script was empty, so backend dependencies were never installed | Set the build script to `npm run build` and redeploy |
+| Frontend build fails with `vite: not found` | `NODE_ENV=production` makes `npm ci` skip devDependencies | Already handled: the root build installs the frontend with `--include=dev` |
+| Prisma panics with `timer has gone away`, or DB queries hang | Prisma's query engine starts one thread per CPU core (48 on the server) and hits the per-account thread limit | Already handled: `backend/src/utils/prisma.js` and `scripts/seed.js` set `TOKIO_WORKER_THREADS`; override via env if needed |
+| Server never logs `server_start` | LiteSpeed loads the entry file through `lsnode.js`, so a `require.main === module` guard skips `app.listen()` | Already handled: the server listens whenever `NODE_ENV !== 'test'` |
+| About half of all requests (even static files) hang with no response and never appear in runtime logs | Node processes from an older deployment were not stopped and LiteSpeed still routes to them | Over SSH run `pkill -f 'lsnode:/home/u549727073/domains/liblingua.gibtechs.com'`; LiteSpeed starts fresh processes on the next request. Check with `ps -u $USER -o pid,etime,args \| grep [l]iblingua`: processes older than the last deploy are stale |
 
 ## Rollback
 
