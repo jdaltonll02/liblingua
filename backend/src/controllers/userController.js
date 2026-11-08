@@ -129,7 +129,7 @@ async function createUser(req, res, next) {
       },
     });
 
-    sendInvitationEmail(user.email, user.name, reset_token).catch(console.error);
+    sendInvitationEmail(user.email, user.name, reset_token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
     await logAction('user_created', req.user.id, user.id, 'User', { role }, req.ip);
 
     res.status(201).json({

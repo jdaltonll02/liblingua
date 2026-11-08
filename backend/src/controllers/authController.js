@@ -5,6 +5,7 @@ const prisma = require('../utils/prisma');
 const { signToken, verifyToken } = require('../utils/jwt');
 const { sendVerificationEmail, sendInvitationEmail } = require('../services/emailService');
 const { fileUrl } = require('../middleware/upload');
+const logger = require('../utils/logger');
 
 const AGE_GROUP_MAP = {
   under_18: 'under_18',
@@ -101,7 +102,7 @@ async function issueOAuthSetPasswordEmail(contributor) {
     where: { id: contributor.id },
     data: { reset_token, reset_token_expires_at },
   });
-  sendInvitationEmail(contributor.email, contributor.name, reset_token).catch(console.error);
+  sendInvitationEmail(contributor.email, contributor.name, reset_token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
 }
 
 // ── Password auth ─────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ async function register(req, res, next) {
       return res.status(201).json({ contributor, message: 'Account created.' });
     }
 
-    sendVerificationEmail(email, name, verification_token).catch(console.error);
+    sendVerificationEmail(email, name, verification_token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
 
     // Don't set cookie — user must verify email first
     res.status(201).json({
@@ -311,7 +312,7 @@ async function resendVerification(req, res, next) {
       data: { verification_token, verification_sent_at: new Date() },
     });
 
-    sendVerificationEmail(email, contributor.name, verification_token).catch(console.error);
+    sendVerificationEmail(email, contributor.name, verification_token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
     res.json({ message: 'Verification email resent. Please check your inbox.' });
   } catch (err) {
     next(err);
@@ -434,7 +435,7 @@ async function googleCallback(req, res) {
       provider: 'google',
     });
 
-    if (isNew) issueOAuthSetPasswordEmail(contributor).catch(console.error);
+    if (isNew) issueOAuthSetPasswordEmail(contributor).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
 
     const jwt = signToken({
       id: contributor.id,
@@ -512,7 +513,7 @@ async function githubCallback(req, res) {
       provider: 'github',
     });
 
-    if (isNew) issueOAuthSetPasswordEmail(contributor).catch(console.error);
+    if (isNew) issueOAuthSetPasswordEmail(contributor).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
 
     const jwt = signToken({
       id: contributor.id,
@@ -549,7 +550,7 @@ async function forgotPassword(req, res, next) {
     });
 
     const { sendPasswordResetEmail } = require('../services/emailService');
-    sendPasswordResetEmail(email, contributor.name, reset_token).catch(console.error);
+    sendPasswordResetEmail(email, contributor.name, reset_token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
     if (!process.env.SMTP_HOST) {
       const url = `${process.env.FRONTEND_URL}/auth/reset-password/${reset_token}`;
       console.log(`\n[EMAIL — dev mode] Password reset link for ${email}:\n  ${url}\n`);
@@ -600,7 +601,7 @@ async function changeEmail(req, res, next) {
     });
 
     const { sendEmailChangeVerification } = require('../services/emailService');
-    sendEmailChangeVerification(email, req.user.name || 'there', token).catch(console.error);
+    sendEmailChangeVerification(email, req.user.name || 'there', token).catch((err) => logger.error('email_send_failed', { message: err.message, code: err.code, response: err.response }));
 
     res.json({ message: `A verification link has been sent to ${email}. Click it to confirm the change.` });
   } catch (err) { next(err); }
