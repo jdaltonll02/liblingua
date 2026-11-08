@@ -10,6 +10,8 @@
 // When running inside Docker the BACKEND_ROOT env var points to /app.
 // When running locally it falls back to <project-root>/backend.
 const path = require('path');
+// Cap Prisma engine threads for shared hosting (see backend/src/utils/prisma.js).
+if (!process.env.TOKIO_WORKER_THREADS) process.env.TOKIO_WORKER_THREADS = '1';
 const backendRoot = process.env.BACKEND_ROOT || path.join(__dirname, '../backend');
 require(path.join(backendRoot, 'node_modules/dotenv')).config({ path: path.join(backendRoot, '.env') });
 const { PrismaClient } = require(path.join(backendRoot, 'node_modules/@prisma/client'));
@@ -153,13 +155,18 @@ async function seed() {
   // Create an admin user
   const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@example.com';
   const adminPwd = process.env.SEED_ADMIN_PASSWORD || 'changeme123';
+  const adminName = process.env.SEED_ADMIN_NAME || 'Admin User';
+  if (process.env.NODE_ENV === 'production' &&
+      (!process.env.SEED_ADMIN_EMAIL || !process.env.SEED_ADMIN_PASSWORD || adminPwd.length < 12)) {
+    throw new Error('In production, set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD (12+ characters).');
+  }
   const existing = await prisma.contributor.findUnique({ where: { email: adminEmail } });
 
   let admin;
   if (!existing) {
     admin = await prisma.contributor.create({
       data: {
-        name: 'Admin User',
+        name: adminName,
         email: adminEmail,
         password_hash: await bcrypt.hash(adminPwd, 12),
         native_language: 'English',
@@ -172,7 +179,7 @@ async function seed() {
         is_profile_complete: true,
       },
     });
-    console.log(`  ✓ Created admin: ${adminEmail} / ${adminPwd}`);
+    console.log(`  ✓ Created admin: ${adminEmail} (${adminName})`);
   } else {
     // Ensure existing admin always has the correct role (fixes installs seeded before this was added)
     admin = await prisma.contributor.update({
