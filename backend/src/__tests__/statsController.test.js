@@ -4,7 +4,7 @@ jest.mock('../utils/prisma', () => ({
     groupBy: jest.fn(),
   },
   contributor: { count: jest.fn() },
-  translation:  { aggregate: jest.fn() },
+  translation:  { aggregate: jest.fn(), groupBy: jest.fn(), count: jest.fn() },
   $queryRaw: jest.fn(),
 }));
 
@@ -28,9 +28,24 @@ function setupMocks({
 } = {}) {
   prisma.englishSample.count.mockResolvedValue(samples);
   prisma.contributor.count.mockResolvedValue(contributors);
-  prisma.$queryRaw
-    .mockResolvedValueOnce(perLang)       // translationsPerLanguage
-    .mockResolvedValueOnce(lockedByLang); // lockedByLanguage
+  const totals = perLang.map((row) => ({
+    target_language: row.target_language,
+    _count: { _all: row.total },
+  }));
+  const validated = perLang.filter((row) => row.validated).map((row) => ({
+    target_language: row.target_language,
+    _count: { _all: row.validated },
+  }));
+  const locked = lockedByLang.flatMap((row) => Array.from(
+    { length: row.locked_count },
+    (_, i) => ({ sample_id: `${row.target_language}-${i}`, target_language: row.target_language, _count: { _all: 3 } })
+  ));
+  prisma.translation.groupBy
+    .mockResolvedValueOnce(totals)
+    .mockResolvedValueOnce(validated)
+    .mockResolvedValueOnce(locked)
+    .mockResolvedValueOnce([]);
+  prisma.translation.count.mockResolvedValue(0);
   prisma.translation.aggregate.mockResolvedValue({ _avg: { quality_score: avgQuality } });
   prisma.englishSample.groupBy.mockResolvedValue(domainBreakdown);
 }

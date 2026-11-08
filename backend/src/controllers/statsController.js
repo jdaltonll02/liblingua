@@ -8,6 +8,7 @@ async function getStats(_req, res, next) {
       totalSamples,
       totalContributors,
       translationsPerLanguage,
+      validatedPerLanguage,
       avgQuality,
       lockedByLanguage,
       domainBreakdown,
@@ -23,26 +24,20 @@ async function getStats(_req, res, next) {
           translations: { some: { is_validated: true } },
         },
       }),
-      prisma.$queryRaw`
-        SELECT target_language, COUNT(*)::int AS total,
-               SUM(CASE WHEN is_validated THEN 1 ELSE 0 END)::int AS validated
-        FROM translations
-        GROUP BY target_language
-      `,
+      prisma.translation.groupBy({ by: ['target_language'], _count: { _all: true } }),
+      prisma.translation.groupBy({
+        by: ['target_language'],
+        where: { is_validated: true },
+        _count: { _all: true },
+      }),
       prisma.translation.aggregate({
         _avg: { quality_score: true },
         where: { quality_score: { not: null } },
       }),
-      prisma.$queryRaw`
-        SELECT t.target_language, COUNT(DISTINCT t.sample_id)::int AS locked_count
-        FROM translations t
-        WHERE t.sample_id IN (
-          SELECT sample_id FROM translations
-          GROUP BY sample_id, target_language
-          HAVING COUNT(*) >= 3
-        )
-        GROUP BY t.target_language
-      `,
+      prisma.translation.groupBy({
+        by: ['sample_id', 'target_language'],
+        _count: { _all: true },
+      }),
       prisma.englishSample.groupBy({ by: ['domain'], _count: { id: true } }),
       // Audio recordings submitted
       prisma.translation.count({ where: { audio_path: { not: null } } }),
@@ -51,12 +46,11 @@ async function getStats(_req, res, next) {
       // Total validated
       prisma.translation.count({ where: { is_validated: true } }),
       // Audio count per language
-      prisma.$queryRaw`
-        SELECT target_language, COUNT(*)::int AS audio_count
-        FROM translations
-        WHERE audio_path IS NOT NULL
-        GROUP BY target_language
-      `,
+      prisma.translation.groupBy({
+        by: ['target_language'],
+        where: { audio_path: { not: null } },
+        _count: { _all: true },
+      }),
     ]);
 
     // Build per-language map
@@ -66,18 +60,22 @@ async function getStats(_req, res, next) {
     }
     for (const row of translationsPerLanguage) {
       if (langStats[row.target_language]) {
-        langStats[row.target_language].total = row.total;
-        langStats[row.target_language].validated = row.validated;
+        langStats[row.target_language].total = row._count._all;
+      }
+    }
+    for (const row of validatedPerLanguage) {
+      if (langStats[row.target_language]) {
+        langStats[row.target_language].validated = row._count._all;
       }
     }
     for (const row of lockedByLanguage) {
-      if (langStats[row.target_language]) {
-        langStats[row.target_language].locked_samples = row.locked_count;
+      if (row._count._all >= 3 && langStats[row.target_language]) {
+        langStats[row.target_language].locked_samples++;
       }
     }
     for (const row of audioPerLanguage) {
       if (langStats[row.target_language]) {
-        langStats[row.target_language].audio_count = row.audio_count;
+        langStats[row.target_language].audio_count = row._count._all;
       }
     }
 

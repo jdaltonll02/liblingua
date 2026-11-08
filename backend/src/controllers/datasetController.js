@@ -105,18 +105,18 @@ async function publishLanguage(req, res, next) {
       prisma.translation.count({ where: { ...where, audio_path: { not: null } } }),
       prisma.translation.count({ where: { ...where, audio_path: null } }),
       prisma.translation.aggregate({ where, _avg: { quality_score: true } }),
-      prisma.$queryRaw`
-        SELECT es.domain, COUNT(t.id)::int AS cnt
-        FROM translations t
-        JOIN english_samples es ON es.id = t.sample_id
-        WHERE t.target_language = ${language} AND t.is_validated = true
-        GROUP BY es.domain
-      `,
+      prisma.translation.findMany({
+        where,
+        select: { sample: { select: { domain: true } } },
+      }),
       prisma.datasetPublication.findUnique({ where: { language }, select: { version: true } }),
     ]);
 
     const domain_dist = {};
-    for (const r of domainRows) domain_dist[r.domain] = r.cnt;
+    for (const row of domainRows) {
+      const domain = row.sample.domain;
+      domain_dist[domain] = (domain_dist[domain] || 0) + 1;
+    }
 
     const pub = await prisma.datasetPublication.upsert({
       where:  { language },

@@ -1,4 +1,5 @@
 const prisma = require('../utils/prisma');
+const { distinctUtcDays } = require('../utils/dateStats');
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
 // Stored as code, not DB rows — simpler and never stale.
@@ -40,6 +41,7 @@ async function award(contributorId, slug) {
 // ── Check and award all eligible badges after a translation is submitted ──────
 
 exports.checkAndAward = async (contributorId, { audioPath, isL1, sampleId }) => {
+  const since30 = new Date(Date.now() - 30 * 86400000);
   const [totalCount, validatedCount, avgQuality, recent] = await Promise.all([
     prisma.translation.count({ where: { contributor_id: contributorId } }),
     prisma.translation.count({ where: { contributor_id: contributorId, is_validated: true } }),
@@ -47,19 +49,16 @@ exports.checkAndAward = async (contributorId, { audioPath, isL1, sampleId }) => 
       where: { contributor_id: contributorId, quality_score: { not: null } },
       _avg: { quality_score: true },
     }),
-    // Last 30 distinct days with at least one translation
-    prisma.$queryRaw`
-      SELECT COUNT(DISTINCT DATE(created_at))::int AS days
-      FROM translations
-      WHERE contributor_id = ${contributorId}
-        AND created_at >= NOW() - INTERVAL '30 days'
-    `,
+    prisma.translation.findMany({
+      where: { contributor_id: contributorId, created_at: { gte: since30 } },
+      select: { created_at: true },
+    }),
   ]);
 
   const total     = totalCount;
   const validated = validatedCount;
   const avg       = avgQuality._avg.quality_score;
-  const recentDays = recent[0]?.days ?? 0;
+  const recentDays = distinctUtcDays(recent).size;
 
   // Count milestones
   if (total === 1)   await award(contributorId, 'first_translation');
@@ -83,13 +82,9 @@ exports.checkAndAward = async (contributorId, { audioPath, isL1, sampleId }) => 
   if (validated >= 10) await award(contributorId, 'validated_10');
 
   // Streak (approximate: count distinct days in last 7 / 30)
-  const [streak7] = await prisma.$queryRaw`
-    SELECT COUNT(DISTINCT DATE(created_at))::int AS days
-    FROM translations
-    WHERE contributor_id = ${contributorId}
-      AND created_at >= NOW() - INTERVAL '7 days'
-  `;
-  if (streak7.days >= 7)  await award(contributorId, 'streak_7');
+  const since7 = Date.now() - 7 * 86400000;
+  const recent7Days = distinctUtcDays(recent.filter((row) => new Date(row.created_at).getTime() >= since7)).size;
+  if (recent7Days >= 7)   await award(contributorId, 'streak_7');
   if (recentDays >= 30)   await award(contributorId, 'streak_30');
 };
 

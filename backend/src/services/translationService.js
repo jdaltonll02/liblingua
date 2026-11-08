@@ -64,13 +64,13 @@ async function submitTranslation({ contributorId, sampleId, targetLanguage, dial
     // that have reached MAX_PER_LANGUAGE and keeps admin stats accurate.
     const shouldLock    = langCount + 1 >= MAX_PER_LANGUAGE;
     const isFirstForLang = langCount === 0;
-    const [updated] = await tx.$queryRaw`
-      UPDATE english_samples
-      SET translation_count = translation_count + CASE WHEN ${isFirstForLang} THEN 1 ELSE 0 END,
-          is_locked = CASE WHEN ${shouldLock} THEN true ELSE is_locked END
-      WHERE id = ${sampleId}
-      RETURNING *
-    `;
+    const updated = await tx.englishSample.update({
+      where: { id: sampleId },
+      data: {
+        ...(isFirstForLang ? { translation_count: { increment: 1 } } : {}),
+        ...(shouldLock ? { is_locked: true } : {}),
+      },
+    });
 
     return { translation, lang_count_after: langCount + 1, sample_locked: updated.is_locked };
   }, { isolationLevel: 'Serializable' });
@@ -132,12 +132,18 @@ async function validateTranslation(translationId, { is_validated, quality_score 
 
 async function _adjustReputationAtomic(contributorId, qualityScore) {
   const delta = qualityScore < QUALITY_REJECT_THRESHOLD ? -REPUTATION_DECREASE : REPUTATION_INCREASE;
-  // Single atomic UPDATE: no read-modify-write race possible
-  await prisma.$executeRaw`
-    UPDATE contributors
-    SET reputation_score = GREATEST(0, LEAST(${REPUTATION_CAP}, reputation_score + ${delta}))
-    WHERE id = ${contributorId}
-  `;
+  await prisma.$transaction(async (tx) => {
+    const contributor = await tx.contributor.findUnique({
+      where: { id: contributorId },
+      select: { reputation_score: true },
+    });
+    if (!contributor) return;
+    const reputation = Math.max(0, Math.min(REPUTATION_CAP, contributor.reputation_score + delta));
+    await tx.contributor.update({
+      where: { id: contributorId },
+      data: { reputation_score: reputation },
+    });
+  }, { isolationLevel: 'Serializable' });
 }
 
 module.exports = { submitTranslation, validateTranslation };

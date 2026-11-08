@@ -1,5 +1,6 @@
 const prisma = require('../utils/prisma');
 const { BADGES, getContributorBadges } = require('../services/badgeService');
+const { consecutiveUtcDayStreak } = require('../utils/dateStats');
 
 // All defined badge types (for UI reference)
 async function listBadgeDefinitions(_req, res, next) {
@@ -27,31 +28,13 @@ async function contributorBadges(req, res, next) {
 // Contributor streak (days in a row with at least one translation)
 async function myStreak(req, res, next) {
   try {
-    const rows = await prisma.$queryRaw`
-      SELECT DATE(created_at AT TIME ZONE 'UTC') AS day
-      FROM translations
-      WHERE contributor_id = ${req.user.id}
-      GROUP BY 1
-      ORDER BY 1 DESC
-      LIMIT 60
-    `;
-    let streak = 0;
-    let prev   = null;
-    for (const row of rows) {
-      const d = new Date(row.day);
-      if (!prev) {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const diff  = Math.round((today - d) / 86400000);
-        if (diff > 1) break; // gap before today
-        streak = 1;
-      } else {
-        const diff = Math.round((prev - d) / 86400000);
-        if (diff === 1) streak++;
-        else break;
-      }
-      prev = d;
-    }
-    res.json({ streak });
+    const since = new Date(Date.now() - 61 * 86400000);
+    const rows = await prisma.translation.findMany({
+      where: { contributor_id: req.user.id, created_at: { gte: since } },
+      select: { created_at: true },
+      orderBy: { created_at: 'desc' },
+    });
+    res.json({ streak: consecutiveUtcDayStreak(rows) });
   } catch (err) { next(err); }
 }
 

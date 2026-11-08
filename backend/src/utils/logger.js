@@ -59,13 +59,11 @@ const logger = winston.createLogger({
   ],
 });
 
-// Console transport in development
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: consoleFormat,
-    level: 'http',
-  }));
-}
+// Always emit to stdout/stderr so managed hosts can collect runtime logs.
+logger.add(new winston.transports.Console({
+  format: process.env.NODE_ENV === 'production' ? fileFormat : consoleFormat,
+  level: 'http',
+}));
 
 // Expose the resolved log directory so startup can print it
 logger.logDir = LOG_DIR;

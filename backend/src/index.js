@@ -52,7 +52,10 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'none'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https:; media-src 'self' blob: https:; " +
+    "connect-src 'self' https:; font-src 'self' data:; " +
+    "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   );
   next();
 });
@@ -84,6 +87,17 @@ app.use('/api/researchers',  generalLimiter,     researcherRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+
+// Hostinger runs one Node.js process per site. Serve the Vite build from the
+// same process so the UI, API, cookies, and OAuth callbacks remain same-origin.
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (process.env.NODE_ENV === 'production' && require('fs').existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path === '/api') return next();
+    return res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => {

@@ -5,11 +5,13 @@ jest.mock('../utils/prisma', () => {
     $queryRaw: jest.fn(),
     translation: { count: jest.fn(), create: jest.fn() },
     goldStandard: { findFirst: jest.fn() },
+    englishSample: { update: jest.fn() },
+    contributor: { findUnique: jest.fn(), update: jest.fn() },
   };
   return {
     $transaction: jest.fn((cb) => cb(mockTx)),
-    translation: { findUnique: jest.fn(), update: jest.fn() },
-    $executeRaw: jest.fn(),
+    translation: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+    contributor: { findUnique: jest.fn() },
     _mockTx: mockTx,
   };
 });
@@ -21,7 +23,11 @@ const SAMPLE_ID      = 'sample-uuid';
 const CONTRIBUTOR_ID = 'contrib-uuid';
 const LANGUAGE       = 'kpelle';
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma._mockTx.$queryRaw.mockReset();
+  prisma.contributor.findUnique.mockResolvedValue(null);
+});
 
 // ── submitTranslation ─────────────────────────────────────────────────────────
 
@@ -35,6 +41,7 @@ describe('submitTranslation — locking logic', () => {
     tx.translation.count.mockResolvedValue(langCount);
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
+    tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: langCount + 1 >= 3 });
   }
 
   test('succeeds when translation count is below MAX (3)', async () => {
@@ -78,6 +85,7 @@ describe('submitTranslation — locking logic', () => {
     tx.translation.count.mockResolvedValue(2); // langCount=2, so langCount+1=3 >= MAX → lock
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
+    tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: true });
 
     const result = await submitTranslation({
       contributorId:  CONTRIBUTOR_ID,
@@ -96,6 +104,7 @@ describe('submitTranslation — locking logic', () => {
     tx.translation.count.mockResolvedValue(1);
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
+    tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: false });
 
     const result = await submitTranslation({
       contributorId:  CONTRIBUTOR_ID,
@@ -123,22 +132,25 @@ describe('validateTranslation — reputation scoring', () => {
       is_validated: true,
       quality_score: qualityScore,
     });
-    prisma.$executeRaw.mockResolvedValue(1);
+    prisma._mockTx.contributor.findUnique.mockResolvedValue({ reputation_score: 1.0 });
+    prisma._mockTx.contributor.update.mockResolvedValue({ reputation_score: 1.1 });
   }
 
   test('adjusts reputation upward for quality score >= 0.4', async () => {
     setupValidation(0.8);
     await validateTranslation('trans-uuid', { is_validated: true, quality_score: 0.8 });
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma._mockTx.contributor.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { reputation_score: 1.1 },
+    }));
     // The SQL call includes a positive delta — verify it was called
-    const sqlCall = prisma.$executeRaw.mock.calls[0];
-    expect(sqlCall).toBeDefined();
   });
 
   test('adjusts reputation downward for quality score < 0.4', async () => {
     setupValidation(0.3);
     await validateTranslation('trans-uuid', { is_validated: true, quality_score: 0.3 });
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma._mockTx.contributor.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { reputation_score: 0.95 },
+    }));
   });
 
   test('skips reputation adjustment when quality_score is null', async () => {
@@ -148,7 +160,7 @@ describe('validateTranslation — reputation scoring', () => {
     prisma.translation.update.mockResolvedValue({ id: 'trans-uuid' });
 
     await validateTranslation('trans-uuid', { is_validated: true, quality_score: null });
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma._mockTx.contributor.update).not.toHaveBeenCalled();
   });
 
   test('throws 404 for unknown translation id', async () => {

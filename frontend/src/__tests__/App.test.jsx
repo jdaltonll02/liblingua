@@ -5,6 +5,6 @@ import App from '../App';
 describe('App component', () => {
   it('renders without crashing', () => {
     render(<App />);
-    expect(screen.getByText(/liberian/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /preserving liberia's.*languages through ai/i })).toBeInTheDocument();
   });
 });

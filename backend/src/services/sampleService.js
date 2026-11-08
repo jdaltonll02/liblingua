@@ -45,17 +45,15 @@ async function pickSampleForContributor(contributorId, language) {
   }
 
   // ── 2. Compute per-domain translation counts for this language ───────────
-  const domainCounts = await prisma.$queryRaw`
-    SELECT es.domain, COUNT(t.id)::int AS cnt
-    FROM english_samples es
-    LEFT JOIN translations t
-      ON t.sample_id = es.id AND t.target_language = ${language}
-    WHERE es.is_gold_standard = false
-    GROUP BY es.domain
-  `;
-
   const countMap = {};
-  for (const row of domainCounts) countMap[row.domain] = row.cnt;
+  const translatedSamples = await prisma.translation.findMany({
+    where: { target_language: language, sample: { is_gold_standard: false } },
+    select: { sample: { select: { domain: true } } },
+  });
+  for (const row of translatedSamples) {
+    const domain = row.sample.domain;
+    countMap[domain] = (countMap[domain] || 0) + 1;
+  }
 
   const weights = DOMAINS.map((d) => 1 / ((countMap[d] ?? 0) + 1));
   const chosenDomain = weightedRandom(DOMAINS, weights);
@@ -75,46 +73,25 @@ async function pickSampleForContributor(contributorId, language) {
 }
 
 async function _queryCandidates(contributorId, language, domain) {
-  if (domain) {
-    return prisma.$queryRaw`
-      SELECT es.*
-      FROM english_samples es
-      WHERE es.is_gold_standard = false
-        AND es.domain = ${domain}::"Domain"
-        AND NOT EXISTS (
-          SELECT 1 FROM translations t
-          WHERE t.sample_id = es.id
-            AND t.contributor_id = ${contributorId}
-            AND t.target_language = ${language}
-        )
-        AND (
-          SELECT COUNT(*) FROM translations t2
-          WHERE t2.sample_id = es.id
-            AND t2.target_language = ${language}
-        ) < ${MAX_PER_LANGUAGE}
-      ORDER BY RANDOM()
-      LIMIT 10
-    `;
-  }
+  const rows = await prisma.englishSample.findMany({
+    where: {
+      is_gold_standard: false,
+      ...(domain ? { domain } : {}),
+      translations: {
+        none: { contributor_id: contributorId, target_language: language },
+      },
+    },
+    include: {
+      translations: {
+        where: { target_language: language },
+        select: { id: true },
+      },
+    },
+  });
 
-  return prisma.$queryRaw`
-    SELECT es.*
-    FROM english_samples es
-    WHERE es.is_gold_standard = false
-      AND NOT EXISTS (
-        SELECT 1 FROM translations t
-        WHERE t.sample_id = es.id
-          AND t.contributor_id = ${contributorId}
-          AND t.target_language = ${language}
-      )
-      AND (
-        SELECT COUNT(*) FROM translations t2
-        WHERE t2.sample_id = es.id
-          AND t2.target_language = ${language}
-      ) < ${MAX_PER_LANGUAGE}
-    ORDER BY RANDOM()
-    LIMIT 1
-  `;
+  return rows
+    .filter((row) => row.translations.length < MAX_PER_LANGUAGE)
+    .map(({ translations, ...sample }) => sample);
 }
 
 /**
@@ -123,21 +100,16 @@ async function _queryCandidates(contributorId, language, domain) {
 async function getLanguageProgress(language) {
   await _assertLanguageExists(language);
 
-  const [total, lockedResult] = await Promise.all([
+  const [total, translationGroups] = await Promise.all([
     prisma.englishSample.count({ where: { is_gold_standard: false } }),
-    prisma.$queryRaw`
-      SELECT COUNT(DISTINCT es.id)::int AS cnt
-      FROM english_samples es
-      WHERE es.is_gold_standard = false
-        AND (
-          SELECT COUNT(*) FROM translations t
-          WHERE t.sample_id = es.id
-            AND t.target_language = ${language}
-        ) >= ${MAX_PER_LANGUAGE}
-    `,
+    prisma.translation.groupBy({
+      by: ['sample_id'],
+      where: { target_language: language, sample: { is_gold_standard: false } },
+      _count: { _all: true },
+    }),
   ]);
 
-  const locked = lockedResult[0]?.cnt ?? 0;
+  const locked = translationGroups.filter((row) => row._count._all >= MAX_PER_LANGUAGE).length;
   return { total, locked, remaining: total - locked, language };
 }
 

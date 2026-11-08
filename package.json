@@ -1,0 +1,16 @@
+{
+  "name": "liblingua",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run db:generate:hostinger && npm run db:migrate:hostinger && npm run build --prefix frontend",
+    "start": "node backend/src/index.js",
+    "db:generate:hostinger": "npm exec --prefix backend -- prisma generate --schema backend/prisma-hostinger/schema.prisma",
+    "db:migrate:hostinger": "npm exec --prefix backend -- prisma migrate deploy --schema backend/prisma-hostinger/schema.prisma",
+    "db:seed": "node scripts/seed.js",
+    "test": "npm test --prefix backend && npm test --prefix frontend -- --run"
+  }
+}

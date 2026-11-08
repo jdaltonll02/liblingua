@@ -1,7 +1,8 @@
 jest.mock('../utils/prisma', () => ({
   language:      { findUnique: jest.fn() },
-  englishSample: { findMany: jest.fn() },
-  $queryRaw:     jest.fn(),
+  englishSample: { findMany: jest.fn(), count: jest.fn() },
+  translation:   { findMany: jest.fn(), groupBy: jest.fn() },
+  $queryRaw:      jest.fn(),
 }));
 
 const prisma = require('../utils/prisma');
@@ -10,18 +11,20 @@ const { pickSampleForContributor, getLanguageProgress, weightedRandom } = requir
 const ACTIVE_LANG = { value: 'kpelle', is_active: true };
 const CONTRIB_ID  = 'contrib-1';
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma.translation.findMany.mockResolvedValue([]);
+});
 
 // ── getLanguageProgress ───────────────────────────────────────────────────────
 
 describe('getLanguageProgress', () => {
   test('returns correct total, locked, and remaining', async () => {
     prisma.language.findUnique.mockResolvedValue(ACTIVE_LANG);
-    prisma.englishSample.count = jest.fn().mockResolvedValue(50);
-    // patch count onto the mock
-    const origModule = require('../utils/prisma');
-    origModule.englishSample.count = jest.fn().mockResolvedValue(50);
-    prisma.$queryRaw.mockResolvedValue([{ cnt: 12 }]);
+    prisma.englishSample.count.mockResolvedValue(50);
+    prisma.translation.groupBy.mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) => ({ sample_id: `s${i}`, _count: { _all: 3 } }))
+    );
 
     const result = await getLanguageProgress('kpelle');
     expect(result.total).toBe(50);
@@ -32,9 +35,8 @@ describe('getLanguageProgress', () => {
 
   test('remaining equals total when no samples are locked', async () => {
     prisma.language.findUnique.mockResolvedValue(ACTIVE_LANG);
-    const origModule = require('../utils/prisma');
-    origModule.englishSample.count = jest.fn().mockResolvedValue(20);
-    prisma.$queryRaw.mockResolvedValue([{ cnt: 0 }]);
+    prisma.englishSample.count.mockResolvedValue(20);
+    prisma.translation.groupBy.mockResolvedValue([]);
 
     const result = await getLanguageProgress('kpelle');
     expect(result.remaining).toBe(20);
@@ -54,6 +56,9 @@ describe('getLanguageProgress', () => {
 // ── pickSampleForContributor ──────────────────────────────────────────────────
 
 describe('pickSampleForContributor', () => {
+  beforeEach(() => jest.spyOn(Math, 'random').mockReturnValue(0.5));
+  afterEach(() => jest.restoreAllMocks());
+
   test('throws 400 for unknown language', async () => {
     prisma.language.findUnique.mockResolvedValue(null);
     await expect(pickSampleForContributor(CONTRIB_ID, 'klingon')).rejects.toMatchObject({ status: 400 });
@@ -74,7 +79,9 @@ describe('pickSampleForContributor', () => {
 
   test('returns a sample from domain-weighted candidates', async () => {
     prisma.language.findUnique.mockResolvedValue(ACTIVE_LANG);
-    prisma.englishSample.findMany.mockResolvedValue([]); // no gold injection
+    prisma.englishSample.findMany.mockResolvedValue([
+      { id: 's1', text: 'A health sample.', domain: 'education', translations: [] },
+    ]);
     prisma.$queryRaw
       .mockResolvedValueOnce([{ domain: 'health', cnt: 0 }]) // domainCounts
       .mockResolvedValueOnce([{ id: 's1', text: 'A health sample.', domain: 'health' }]); // candidates
@@ -84,7 +91,9 @@ describe('pickSampleForContributor', () => {
 
   test('uses fallback when chosen domain has no candidates', async () => {
     prisma.language.findUnique.mockResolvedValue(ACTIVE_LANG);
-    prisma.englishSample.findMany.mockResolvedValue([]);
+    prisma.englishSample.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 's2', text: 'Fallback sample.', domain: 'general', translations: [] }]);
     prisma.$queryRaw
       .mockResolvedValueOnce([]) // domainCounts — empty (no domain data)
       .mockResolvedValueOnce([]) // chosen domain returns nothing
@@ -97,7 +106,9 @@ describe('pickSampleForContributor', () => {
     // The service returns the raw DB row; stripping happens in the controller.
     // This test confirms the service does NOT strip it, so the controller test can verify stripping.
     prisma.language.findUnique.mockResolvedValue(ACTIVE_LANG);
-    prisma.englishSample.findMany.mockResolvedValue([]);
+    prisma.englishSample.findMany.mockResolvedValue([
+      { id: 's3', is_gold_standard: false, translations: [] },
+    ]);
     prisma.$queryRaw
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 's3', is_gold_standard: false }])
