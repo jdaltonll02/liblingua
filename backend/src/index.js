@@ -37,6 +37,15 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 // Initialize Sentry early
+// TEMP diagnostics: log arrival of every request with the worker pid.
+if (process.env.REQ_TRACE !== 'off') {
+  app.use((req, res, next) => {
+    logger.info('req_in', { pid: process.pid, path: req.originalUrl });
+    res.on('close', () => logger.info('req_out', { pid: process.pid, path: req.originalUrl, status: res.statusCode, finished: res.writableFinished }));
+    next();
+  });
+}
+
 initSentry();
 const [sentryRequest, sentryError] = getSentryMiddleware();
 app.use(sentryRequest);
@@ -146,7 +155,7 @@ app.use((err, req, res, _next) => {
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
-    logger.info('server_start', { port: PORT, env: process.env.NODE_ENV || 'development' });
+    logger.info('server_start', { pid: process.pid, port: PORT, env: process.env.NODE_ENV || 'development' });
     logger.info(`Logs writing to: ${logger.logDir}`);
   });
 }
