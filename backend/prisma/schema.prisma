@@ -607,17 +607,15 @@ model ConsentState {
 /// references, and releases. The target remains generic until those resources
 /// receive dedicated immutable models in later phases.
 model GovernanceApproval {
-  id                    String           @id @default(uuid())
-  resource_type         String
-  resource_id           String
-  language              String?
-  approver_id           String
-  authority_role        String
-  active_role           String?          @unique
-  active_contributor_id String?          @unique
-  decision              ApprovalDecision
-  notes                 String?
-  decided_at            DateTime         @default(now())
+  id             String           @id @default(uuid())
+  resource_type  String
+  resource_id    String
+  language       String?
+  approver_id    String
+  authority_role String
+  decision       ApprovalDecision
+  notes          String?
+  decided_at     DateTime         @default(now())
 
   approver Contributor @relation(fields: [approver_id], references: [id], onDelete: Restrict)
 
@@ -630,12 +628,14 @@ model GovernanceApproval {
 /// Assigns the two independent governance signing authorities. Assignments are
 /// retained after revocation so the authority in force for a decision is auditable.
 model GovernanceAuthorityAssignment {
-  id             String    @id @default(uuid())
-  contributor_id String
-  authority_role String
-  assigned_by    String
-  assigned_at    DateTime  @default(now())
-  revoked_at     DateTime?
+  id                    String    @id @default(uuid())
+  contributor_id        String
+  authority_role        String
+  active_role           String?   @unique
+  active_contributor_id String?   @unique
+  assigned_by           String
+  assigned_at           DateTime  @default(now())
+  revoked_at            DateTime?
 
   contributor Contributor @relation("GovernanceAuthorityHolder", fields: [contributor_id], references: [id], onDelete: Restrict)
   assigner    Contributor @relation("GovernanceAuthorityAssigner", fields: [assigned_by], references: [id], onDelete: Restrict)
