@@ -8,6 +8,8 @@ import {
   createOrthography,
   getAllLinguisticMetadata,
   getGovernanceApprovals,
+  getGovernanceAuthorities,
+  assignGovernanceAuthority,
   recordGovernanceApproval,
 } from '../api/linguisticMetadata';
 import { listReleasesAdmin } from '../api/dataset';
@@ -36,13 +38,12 @@ function ApprovalSummary({ approvals, type, id }) {
   );
 }
 
-function ResourceActions({ type, resource, approvals, onAction, busy }) {
+function ResourceActions({ type, resource, approvals, onAction, busy, authorityRole }) {
   return (
     <div className="mt-3 pt-3 border-t border-gray-100">
       <ApprovalSummary approvals={approvals} type={type} id={resource.id} />
       {resource.status !== 'ACTIVE' && <div className="flex flex-wrap gap-2 mt-3">
-        <button className="btn-secondary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => onAction('approve', type, resource.id, 'COMMUNITY')}>Approve as community</button>
-        <button className="btn-secondary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => onAction('approve', type, resource.id, 'RESEARCH')}>Approve as research</button>
+        {authorityRole && <button className="btn-secondary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => onAction('approve', type, resource.id, authorityRole)}>Approve as {authorityRole.toLowerCase()} authority</button>}
         <button className="btn-primary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => onAction('activate', type, resource.id)}>Activate</button>
       </div>}
     </div>
@@ -54,6 +55,8 @@ export default function ResearchGovernanceTab({ onNavigate }) {
   const [policies, setPolicies] = useState([]);
   const [languages, setLanguages] = useState([]);
   const [approvals, setApprovals] = useState([]);
+  const [authorities, setAuthorities] = useState({ assignments: [], candidates: [] });
+  const [authorityDraft, setAuthorityDraft] = useState({ COMMUNITY: '', RESEARCH: '' });
   const [releases, setReleases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -67,12 +70,13 @@ export default function ResearchGovernanceTab({ onNavigate }) {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [policyResponse, languageResponse, approvalResponse, releaseResponse] = await Promise.all([
-        getAllResearchPolicies(), getAllLinguisticMetadata(), getGovernanceApprovals(), listReleasesAdmin(),
+      const [policyResponse, languageResponse, approvalResponse, authorityResponse, releaseResponse] = await Promise.all([
+        getAllResearchPolicies(), getAllLinguisticMetadata(), getGovernanceApprovals(), getGovernanceAuthorities(), listReleasesAdmin(),
       ]);
       setPolicies(policyResponse.data.policies || []);
       setLanguages(languageResponse.data || []);
       setApprovals(approvalResponse.data.approvals || []);
+      setAuthorities(authorityResponse.data || { assignments: [], candidates: [] });
       setReleases(releaseResponse.data.releases || []);
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Could not load research governance data.');
@@ -85,6 +89,7 @@ export default function ResearchGovernanceTab({ onNavigate }) {
   const activeVarieties = varieties.filter((item) => item.status === 'ACTIVE').length;
   const activeOrthographies = varieties.flatMap((item) => item.orthographies).filter((item) => item.status === 'ACTIVE').length;
   const activeGuidelines = varieties.flatMap((item) => item.guidelines).filter((item) => item.status === 'ACTIVE').length;
+  const myAuthority = authorities.assignments.find((item) => item.contributor_id === user?.id)?.authority_role || '';
   const blockers = [
     activePolicies < 4 && `${4 - activePolicies} required polic${4 - activePolicies === 1 ? 'y is' : 'ies are'} inactive`,
     activeVarieties === 0 && 'No language variety is active',
@@ -104,6 +109,18 @@ export default function ResearchGovernanceTab({ onNavigate }) {
       }
       await load();
     } catch (requestError) { setError(requestError.response?.data?.error || 'The governance action failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const assignAuthority = async (role) => {
+    const contributorId = authorityDraft[role];
+    if (!contributorId) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await assignGovernanceAuthority(role, contributorId);
+      setNotice(`${role === 'COMMUNITY' ? 'Community' : 'Research'} signing authority assigned. Previous decisions by a replaced authority no longer satisfy activation.`);
+      await load();
+    } catch (requestError) { setError(requestError.response?.data?.error || 'Could not assign the signing authority.'); }
     finally { setBusy(false); }
   };
 
@@ -148,13 +165,28 @@ export default function ResearchGovernanceTab({ onNavigate }) {
         ].map(([label, value]) => <div key={label} className="card !p-4"><p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p><p className="text-2xl font-black mt-2">{value}</p></div>)}
       </div>
 
+      <section className="card mb-9">
+        <div className="flex flex-wrap justify-between gap-3 mb-4"><div><h2 className="text-xl font-black">Independent signing authorities</h2><p className="text-sm text-gray-500">Only the assigned person can sign for that authority. One account cannot hold both assignments.</p></div>{user?.role !== 'SUPER_ADMIN' && <span className="text-xs text-gray-500">A super administrator assigns these roles.</span>}</div>
+        <div className="grid md:grid-cols-2 gap-4">
+          {['COMMUNITY', 'RESEARCH'].map((role) => {
+            const current = authorities.assignments.find((item) => item.authority_role === role);
+            return <div key={role} className="rounded-xl border p-4">
+              <p className="text-xs font-bold tracking-wide text-gray-400">{role} AUTHORITY</p>
+              <p className="font-bold mt-1">{current?.contributor?.name || 'Not assigned'}</p>
+              <p className="text-xs text-gray-500">{current?.contributor?.email || 'Assign an active, verified account before approvals can be recorded.'}</p>
+              {user?.role === 'SUPER_ADMIN' && <div className="flex gap-2 mt-3"><select className="input-field" value={authorityDraft[role]} onChange={(e) => setAuthorityDraft({ ...authorityDraft, [role]: e.target.value })}><option value="">Select account</option>{authorities.candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} — {candidate.email}</option>)}</select><button type="button" className="btn-secondary whitespace-nowrap" disabled={busy || !authorityDraft[role]} onClick={() => assignAuthority(role)}>Assign</button></div>}
+            </div>;
+          })}
+        </div>
+      </section>
+
       <section className="mb-9">
         <div className="flex items-center justify-between mb-4"><div><h2 className="text-xl font-black">Versioned policies</h2><p className="text-sm text-gray-500">Both approvals must be from different accounts.</p></div></div>
         <div className="grid lg:grid-cols-2 gap-4">
           {policies.map((policy) => <div key={policy.id} className="card !p-5">
             <div className="flex justify-between gap-3"><div><h3 className="font-bold text-gray-900">{policy.title}</h3><p className="text-xs text-gray-500 mt-1">{policy.policy_key} · version {policy.version}</p></div><StatusBadge status={policy.status} /></div>
             {policy.content_url && <a className="text-xs text-liberia-blue underline inline-block mt-3" href={policy.content_url} target="_blank" rel="noreferrer">Review exact document</a>}
-            <ResourceActions type="RESEARCH_POLICY" resource={policy} approvals={approvals} onAction={action} busy={busy} />
+            <ResourceActions type="RESEARCH_POLICY" resource={policy} approvals={approvals} onAction={action} busy={busy} authorityRole={myAuthority} />
           </div>)}
         </div>
       </section>
@@ -182,10 +214,10 @@ export default function ResearchGovernanceTab({ onNavigate }) {
 
         {varieties.length === 0 ? <div className="card text-center py-12"><h3 className="font-bold text-gray-800">No controlled language varieties yet</h3><p className="text-sm text-gray-500 mt-2">Create the first draft variety, then have separate community and research accounts approve it.</p></div> : <div className="space-y-4">{varieties.map((item) => <div key={item.id} className="card !p-5">
           <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-400">{item.language.label}</p><h3 className="font-black text-lg">{item.name}{item.autonym ? ` / ${item.autonym}` : ''}</h3><p className="text-xs text-gray-500 mt-1">{[item.code, item.iso639_3, item.glottocode, item.bcp47].filter(Boolean).join(' · ')}</p></div><StatusBadge status={item.status} /></div>
-          <ResourceActions type="LANGUAGE_VARIETY" resource={item} approvals={approvals} onAction={action} busy={busy} />
+          <ResourceActions type="LANGUAGE_VARIETY" resource={item} approvals={approvals} onAction={action} busy={busy} authorityRole={myAuthority} />
           <div className="grid lg:grid-cols-2 gap-3 mt-4">
-            {item.orthographies.map((resource) => <div key={resource.id} className="rounded-xl border p-4"><div className="flex justify-between"><div><p className="font-bold text-sm">{resource.name}</p><p className="text-xs text-gray-500">{resource.script} · {resource.version || 'unversioned'}</p></div><StatusBadge status={resource.status} /></div><ResourceActions type="ORTHOGRAPHY" resource={resource} approvals={approvals} onAction={action} busy={busy} /></div>)}
-            {item.guidelines.map((resource) => <div key={resource.id} className="rounded-xl border p-4"><div className="flex justify-between"><div><p className="font-bold text-sm">{resource.title}</p><p className="text-xs text-gray-500">Guideline {resource.version}</p></div><StatusBadge status={resource.status} /></div><ResourceActions type="ANNOTATION_GUIDELINE" resource={resource} approvals={approvals} onAction={action} busy={busy} /></div>)}
+            {item.orthographies.map((resource) => <div key={resource.id} className="rounded-xl border p-4"><div className="flex justify-between"><div><p className="font-bold text-sm">{resource.name}</p><p className="text-xs text-gray-500">{resource.script} · {resource.version || 'unversioned'}</p></div><StatusBadge status={resource.status} /></div><ResourceActions type="ORTHOGRAPHY" resource={resource} approvals={approvals} onAction={action} busy={busy} authorityRole={myAuthority} /></div>)}
+            {item.guidelines.map((resource) => <div key={resource.id} className="rounded-xl border p-4"><div className="flex justify-between"><div><p className="font-bold text-sm">{resource.title}</p><p className="text-xs text-gray-500">Guideline {resource.version}</p></div><StatusBadge status={resource.status} /></div><ResourceActions type="ANNOTATION_GUIDELINE" resource={resource} approvals={approvals} onAction={action} busy={busy} authorityRole={myAuthority} /></div>)}
           </div>
         </div>)}</div>}
       </section>

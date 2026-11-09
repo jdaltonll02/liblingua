@@ -6,6 +6,8 @@ const {
   getRandomSample, getSampleById,
   createSample, bulkCreateSamples, getLanguageProgress, syncFromHuggingFace,
   reviewSourceProvenance,
+  createContributorSample,
+  listSourceReviewQueue,
 } = require('../controllers/sampleController');
 
 const router = Router();
@@ -21,6 +23,14 @@ const sampleValidators = [
 
 router.get('/random', requireAuth, getRandomSample);
 router.get('/progress', requireAuth, getLanguageProgress);
+router.get('/admin/source-review', requireAdmin, listSourceReviewQueue);
+router.post('/contributed', requireAuth, [
+  body('text').trim().isLength({ min: 10, max: 1000 }).withMessage('Write an original sentence between 10 and 1000 characters'),
+  body('domain').isIn(DOMAINS).withMessage(`domain must be one of: ${DOMAINS.join(', ')}`),
+  body('difficulty').isIn(DIFFICULTIES).withMessage(`difficulty must be one of: ${DIFFICULTIES.join(', ')}`),
+  body('originality_attested').equals('true').withMessage('You must confirm that you wrote the sentence yourself'),
+  body('contains_personal_data').equals('false').withMessage('Do not submit names, contact details, private facts, or other personal data'),
+], validate, createContributorSample);
 router.get('/:id', requireAuth, getSampleById);
 router.post('/', requireAdmin, sampleValidators, validate, createSample);
 router.post('/bulk', requireAdmin, bulkCreateSamples);

@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import LanguageSelector, { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 import AudioPlayer from '../components/AudioPlayer';
 import AudioRecorder from '../components/AudioRecorder';
-import { getRandomSample, getProgress } from '../api/samples';
+import { createContributorSample, getRandomSample, getProgress } from '../api/samples';
 import { submitTranslation } from '../api/translations';
 import CampaignBanner from '../components/CampaignBanner';
 import { getLinguisticMetadata, getMyLanguageProfiles, saveMyLanguageProfile } from '../api/linguisticMetadata';
@@ -51,6 +51,9 @@ export default function Translate() {
   const [annotationNotes, setAnnotationNotes] = useState('');
   const [containsCodeSwitching, setContainsCodeSwitching] = useState(false);
   const [codeSwitchingNotes, setCodeSwitchingNotes] = useState('');
+  const [sourceMode, setSourceMode] = useState('random');
+  const [ownSource, setOwnSource] = useState({ text: '', domain: 'conversational', difficulty: 'easy' });
+  const [ownSourceAttested, setOwnSourceAttested] = useState(false);
   const [profileDraft, setProfileDraft] = useState({
     speaking_proficiency: 'PROFICIENT', reading_proficiency: 'WORKING',
     writing_proficiency: 'WORKING', usage_frequency: 'DAILY', is_first_language: true,
@@ -103,6 +106,7 @@ export default function Translate() {
     setAudioFile(null);
     setEnglishAudioFile(null);
     setSample(null);
+    setSourceMode('random');
     try {
       const [sampleRes, progressRes] = await Promise.all([
         getRandomSample(lang),
@@ -146,6 +150,25 @@ export default function Translate() {
     } catch (err) {
       setMessage(err.response?.data?.error || 'Could not save the language profile.');
       setStatus('error');
+    }
+  };
+
+  const useOwnSentence = async () => {
+    if (!ownSourceAttested || ownSource.text.trim().length < 10) return;
+    setStatus('loading'); setMessage('');
+    try {
+      const response = await createContributorSample({
+        ...ownSource,
+        text: ownSource.text.trim(),
+        originality_attested: true,
+        contains_personal_data: false,
+      });
+      setSample({ ...response.data.sample, participant_authored: true });
+      setTranslatedText(''); setAudioFile(null); setEnglishAudioFile(null);
+      setStatus('idle');
+    } catch (err) {
+      setStatus('error');
+      setMessage(err.response?.data?.error || 'Could not prepare your sentence for translation.');
     }
   };
 
@@ -264,6 +287,23 @@ export default function Translate() {
           )}
         </div>
 
+        <div className="card mb-6 border-blue-100">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><h2 className="font-bold text-gray-900">Source sentence</h2><p className="text-sm text-gray-600 mt-1">Translating the sentence selected by LibLingua is strongly encouraged because it keeps the dataset balanced.</p></div>
+            <button type="button" className="btn-secondary" onClick={() => setSourceMode(sourceMode === 'own' ? 'random' : 'own')}>{sourceMode === 'own' ? 'Use selected sentence' : 'Translate my own sentence'}</button>
+          </div>
+          {sourceMode === 'own' && <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-4">
+            <p className="text-sm text-amber-900"><strong>Optional and reviewed separately.</strong> Write a sentence you created yourself. Do not copy text or include anyone’s name, contact details, medical details, or other private information. It stays out of dataset releases until reviewed.</p>
+            <textarea className="input-field mt-3 min-h-[100px]" maxLength={1000} placeholder="Enter an original English source sentence…" value={ownSource.text} onChange={(e) => setOwnSource({ ...ownSource, text: e.target.value })} />
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              <label className="text-sm">Domain<select className="input-field mt-1" value={ownSource.domain} onChange={(e) => setOwnSource({ ...ownSource, domain: e.target.value })}>{Object.keys(DOMAIN_COLORS).map((value) => <option key={value}>{value}</option>)}</select></label>
+              <label className="text-sm">Difficulty<select className="input-field mt-1" value={ownSource.difficulty} onChange={(e) => setOwnSource({ ...ownSource, difficulty: e.target.value })}>{['easy', 'medium', 'hard'].map((value) => <option key={value}>{value}</option>)}</select></label>
+            </div>
+            <label className="flex gap-2 items-start mt-3 text-sm"><input className="mt-1" type="checkbox" checked={ownSourceAttested} onChange={(e) => setOwnSourceAttested(e.target.checked)} /><span>I wrote this sentence myself and confirm it contains no personal or private information.</span></label>
+            <button type="button" className="btn-primary mt-3" disabled={!ownSourceAttested || ownSource.text.trim().length < 10 || status === 'loading'} onClick={useOwnSentence}>Use this sentence</button>
+          </div>}
+        </div>
+
         {/* Status messages */}
         {status === 'success' && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm font-medium">
@@ -301,6 +341,7 @@ export default function Translate() {
           <form onSubmit={handleSubmit}>
             {/* Source sample */}
             <div className="card mb-4">
+              {sample.participant_authored && <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">Your original sentence · pending source and privacy review before any dataset release</div>}
               <div className="flex items-center gap-2 mb-3">
                 <span className={`badge ${DOMAIN_COLORS[sample.domain] || 'bg-gray-100 text-gray-600'}`}>
                   {sample.domain}

@@ -1,6 +1,8 @@
 const { parse: parseCsv } = require('csv-parse/sync');
 const prisma = require('../utils/prisma');
 const { pickSampleForContributor, getLanguageProgress: _getProgress } = require('../services/sampleService');
+const { assertAdultParticipant } = require('../services/participantEligibilityService');
+const { assertActiveConsent } = require('../services/consentService');
 const {
   initialSourceFields,
   evaluateSourceEligibility,
@@ -52,6 +54,44 @@ async function createSample(req, res, next) {
     });
     res.status(201).json(sample);
   } catch (err) {
+    next(err);
+  }
+}
+
+async function createContributorSample(req, res, next) {
+  try {
+    await assertAdultParticipant(req.user.id);
+    await assertActiveConsent(req.user.id, ['text_contribution']);
+    const text = String(req.body.text || '').normalize('NFC').replace(/\s+/g, ' ').trim();
+    const domain = req.body.domain;
+    const difficulty = req.body.difficulty || 'medium';
+    const sourceFields = initialSourceFields({
+      text,
+      domain,
+      importedBy: req.user.id,
+      source: {
+        source_kind: 'MANUAL',
+        copyright_status: 'PERMISSION_GRANTED',
+        source_citation: 'Original source sentence contributed directly by a LibLingua participant',
+        source_usage_restrictions: 'Quarantined from dataset release until source and privacy review',
+        provenance_metadata: { contributor_generated: true, originality_attested: true },
+      },
+    });
+    const existing = await prisma.englishSample.findUnique({ where: { text_hash: sourceFields.text_hash } });
+    if (existing) return res.json({ sample: existing, reused: true, pending_source_review: !existing.source_release_eligible });
+    const sample = await prisma.englishSample.create({
+      data: {
+        text, domain, difficulty, is_gold_standard: false,
+        ...sourceFields,
+        copyright_status: 'PERMISSION_GRANTED',
+        source_citation: 'Original source sentence contributed directly by a LibLingua participant',
+        source_usage_restrictions: 'Quarantined from dataset release until source and privacy review',
+      },
+    });
+    res.status(201).json({ sample, reused: false, pending_source_review: true });
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ error: 'That source sentence already exists; request another random prompt instead.' });
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 }
@@ -250,6 +290,22 @@ async function reviewSourceProvenance(req, res, next) {
   }
 }
 
+async function listSourceReviewQueue(req, res, next) {
+  try {
+    const take = Math.min(Number.parseInt(req.query.limit, 10) || 100, 200);
+    const samples = await prisma.englishSample.findMany({
+      where: {
+        source_release_eligible: false,
+        source_kind: 'MANUAL',
+        copyright_status: 'PERMISSION_GRANTED',
+      },
+      orderBy: { created_at: 'asc' },
+      take,
+    });
+    res.json({ samples, count: samples.length });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getRandomSample,
   getSampleById,
@@ -258,4 +314,6 @@ module.exports = {
   getLanguageProgress,
   syncFromHuggingFace,
   reviewSourceProvenance,
+  createContributorSample,
+  listSourceReviewQueue,
 };

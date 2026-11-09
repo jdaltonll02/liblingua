@@ -1,7 +1,7 @@
 const { Router } = require('express');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const { validate } = require('../middleware/validate');
-const { requireAuth, requireResearchAdmin } = require('../middleware/auth');
+const { requireAuth, requireRole, requireResearchAdmin } = require('../middleware/auth');
 const controller = require('../controllers/linguisticMetadataController');
 
 const router = Router();
@@ -11,6 +11,14 @@ const uuid = (field) => body(field).isUUID().withMessage(`${field} must be a UUI
 router.get('/', controller.listActive);
 router.get('/admin', admin, controller.listAll);
 router.get('/approvals', admin, controller.listApprovals);
+router.get('/authorities', admin, controller.listAuthorities);
+router.put('/authorities/:role', requireRole('SUPER_ADMIN'), [
+  body('contributor_id').isUUID(),
+  param('role').toUpperCase().isIn(['COMMUNITY', 'RESEARCH']),
+], validate, (req, res, next) => {
+  req.body.authority_role = req.params.role.toUpperCase();
+  return controller.assignAuthority(req, res, next);
+});
 router.get('/profiles/mine', requireAuth, controller.myProfiles);
 router.put('/profiles/mine', requireAuth, [
   uuid('variety_id'),

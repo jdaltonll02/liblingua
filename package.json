@@ -6,10 +6,11 @@
     "node": "20.x"
   },
   "scripts": {
-    "build": "npm ci --prefix backend && CYPRESS_INSTALL_BINARY=0 npm ci --prefix frontend --include=dev && npm run db:generate:hostinger && npm run db:migrate:hostinger && npm run build --prefix frontend",
+    "build": "npm ci --prefix backend && CYPRESS_INSTALL_BINARY=0 npm ci --prefix frontend --include=dev && npm run db:generate:hostinger && npm run db:migrate:hostinger && npm run db:seed:sources && npm run build --prefix frontend",
     "start": "node backend/src/index.js",
     "db:generate:hostinger": "npm exec --prefix backend -- prisma generate --schema backend/prisma-hostinger/schema.prisma",
     "db:migrate:hostinger": "npm exec --prefix backend -- prisma migrate deploy --schema backend/prisma-hostinger/schema.prisma",
+    "db:seed:sources": "node backend/scripts/seedCuratedSources.js",
     "db:seed": "node scripts/seed.js",
     "test": "npm test --prefix backend && npm test --prefix frontend -- --run"
   }

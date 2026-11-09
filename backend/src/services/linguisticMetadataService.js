@@ -120,6 +120,12 @@ async function recordApproval({ resourceType, resourceId, authorityRole, decisio
   if (!['COMMUNITY', 'RESEARCH'].includes(normalizedRole)) {
     throw httpError('authority_role must be COMMUNITY or RESEARCH');
   }
+  const assignment = await prisma.governanceAuthorityAssignment.findFirst({
+    where: { contributor_id: approverId, authority_role: normalizedRole, revoked_at: null },
+  });
+  if (!assignment) {
+    throw httpError(`Only the currently assigned ${normalizedRole.toLowerCase()} authority can record this decision`, 403);
+  }
   return prisma.governanceApproval.create({
     data: {
       resource_type: resourceType,
@@ -136,17 +142,26 @@ async function recordApproval({ resourceType, resourceId, authorityRole, decisio
 }
 
 async function assertGovernanceApprovals(resourceType, resourceId, { since } = {}) {
-  const approvals = await prisma.governanceApproval.findMany({
+  const [approvals, assignments] = await Promise.all([
+    prisma.governanceApproval.findMany({
     where: {
       resource_type: resourceType,
       resource_id: resourceId,
       ...(since ? { decided_at: { gt: since } } : {}),
     },
     orderBy: { decided_at: 'desc' },
-  });
+    }),
+    prisma.governanceAuthorityAssignment.findMany({ where: { revoked_at: null } }),
+  ]);
+  const authorityByRole = new Map(assignments.map((item) => [item.authority_role, item]));
   const latestByRole = new Map();
   for (const approval of approvals) {
-    if (!latestByRole.has(approval.authority_role)) latestByRole.set(approval.authority_role, approval);
+    const authority = authorityByRole.get(approval.authority_role);
+    if (authority && authority.contributor_id === approval.approver_id &&
+        new Date(approval.decided_at) >= new Date(authority.assigned_at) &&
+        !latestByRole.has(approval.authority_role)) {
+      latestByRole.set(approval.authority_role, approval);
+    }
   }
   for (const role of ['COMMUNITY', 'RESEARCH']) {
     if (latestByRole.get(role)?.decision !== 'APPROVED') {
@@ -157,6 +172,61 @@ async function assertGovernanceApprovals(resourceType, resourceId, { since } = {
     throw httpError('Community and research approvals must come from different accounts', 409);
   }
   return Object.fromEntries(latestByRole);
+}
+
+async function listGovernanceAuthorities() {
+  const [assignments, candidates] = await Promise.all([
+    prisma.governanceAuthorityAssignment.findMany({
+      where: { revoked_at: null },
+      include: {
+        contributor: { select: { id: true, name: true, email: true, role: true } },
+        assigner: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { authority_role: 'asc' },
+    }),
+    prisma.contributor.findMany({
+      where: { is_active: true, email_verified: true },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+      take: 500,
+    }),
+  ]);
+  return { assignments, candidates };
+}
+
+async function assignGovernanceAuthority({ authorityRole, contributorId, assignedBy }) {
+  const normalizedRole = String(authorityRole || '').trim().toUpperCase();
+  if (!['COMMUNITY', 'RESEARCH'].includes(normalizedRole)) {
+    throw httpError('authority_role must be COMMUNITY or RESEARCH');
+  }
+  const contributor = await prisma.contributor.findUnique({ where: { id: contributorId } });
+  if (!contributor || !contributor.is_active || !contributor.email_verified) {
+    throw httpError('Authority must be an active, verified account', 409);
+  }
+  const current = await prisma.governanceAuthorityAssignment.findFirst({
+    where: { authority_role: normalizedRole, revoked_at: null },
+    include: { contributor: { select: { id: true, name: true, email: true, role: true } } },
+  });
+  if (current?.contributor_id === contributorId) return current;
+  const conflicting = await prisma.governanceAuthorityAssignment.findFirst({
+    where: { contributor_id: contributorId, revoked_at: null, authority_role: { not: normalizedRole } },
+  });
+  if (conflicting) throw httpError('Community and research authority must be assigned to different accounts', 409);
+
+  return prisma.$transaction(async (tx) => {
+    const now = new Date();
+    await tx.governanceAuthorityAssignment.updateMany({
+      where: { authority_role: normalizedRole, revoked_at: null },
+      data: { revoked_at: now, active_role: null, active_contributor_id: null },
+    });
+    return tx.governanceAuthorityAssignment.create({
+      data: {
+        contributor_id: contributorId, authority_role: normalizedRole, assigned_by: assignedBy,
+        active_role: normalizedRole, active_contributor_id: contributorId,
+      },
+      include: { contributor: { select: { id: true, name: true, email: true, role: true } } },
+    });
+  });
 }
 
 async function listGovernanceApprovals({ resourceType, resourceId } = {}) {
@@ -277,4 +347,6 @@ module.exports = {
   validateSubmissionMetadata,
   assertGovernanceApprovals,
   listGovernanceApprovals,
+  listGovernanceAuthorities,
+  assignGovernanceAuthority,
 };

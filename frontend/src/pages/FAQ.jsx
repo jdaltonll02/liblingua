@@ -33,7 +33,7 @@ const FAQS = [
       },
       {
         q: 'How do I get started?',
-        a: 'Create an account, select your native language, and visit the Translate page. You\'ll be shown English sentences one at a time and asked to write the translation in your chosen language. You can also record your spoken translation as audio.',
+        a: 'Create an account, select your native language, and visit the Translate page. Using the selected prompt is strongly encouraged because it keeps the dataset balanced. You may optionally write and translate an original sentence; it is quarantined from releases until source and privacy review.',
       },
       {
         q: 'Can I translate into multiple languages?',

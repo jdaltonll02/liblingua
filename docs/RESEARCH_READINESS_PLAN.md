@@ -40,6 +40,8 @@ The frontend production bundle is built without applying deployment migrations.
 - [x] Add versioned governance, acceptable-use, prohibited-use, and benefit-sharing documents.
 - [x] Add database support for versioned research policies and human governance approvals.
 - [x] Add a community advisory/review record and named release approvers.
+- [x] Enforce formally assigned, independent community and research signing accounts;
+      provide assignment and approval controls in the admin interface.
 - [x] Prevent publication when required governance approvals are absent.
 
 Acceptance: every collection campaign and release points to approved governance terms.

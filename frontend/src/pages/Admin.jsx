@@ -457,6 +457,30 @@ function ImportTab() {
   const [hfCount, setHfCount] = useState(50);
   const [hfSplit, setHfSplit] = useState('dev');
   const [hfDomain, setHfDomain] = useState('');
+  const [sourceQueue, setSourceQueue] = useState([]);
+  const [reviewingSource, setReviewingSource] = useState('');
+
+  const loadSourceQueue = useCallback(async () => {
+    try {
+      const response = await api.get('/samples/admin/source-review');
+      setSourceQueue(response.data.samples || []);
+    } catch { /* The import tools remain usable if this optional queue cannot load. */ }
+  }, []);
+  useEffect(() => { loadSourceQueue(); }, [loadSourceQueue]);
+
+  const reviewSource = async (sample, decision) => {
+    setReviewingSource(sample.id); setError('');
+    try {
+      await api.patch(`/samples/${sample.id}/provenance`, {
+        specialist_review_status: decision,
+        specialist_review_notes: decision === 'APPROVED'
+          ? 'Source originality, privacy, clarity, and domain classification reviewed in the admin panel.'
+          : 'Source rejected during originality, privacy, clarity, or domain review.',
+      });
+      await loadSourceQueue();
+    } catch (err) { setError(err.response?.data?.error || 'Source review failed.'); }
+    finally { setReviewingSource(''); }
+  };
 
   const handleImport = async () => {
     setError(''); setResult(null); setLoading(true); setProgress('');
@@ -496,9 +520,9 @@ function ImportTab() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-4">Bulk Import</h1>
-      <div className="card">
+      <div className="card mb-6">
         <div className="flex gap-2 mb-4 flex-wrap">
-          {[['json','JSON'],['csv','CSV'],['huggingface','HuggingFace FLORES']].map(([m, lbl]) => (
+          {[['json','JSON'],['csv','CSV']].map(([m, lbl]) => (
             <button key={m} onClick={() => { setMode(m); setText(''); setResult(null); setError(''); }}
               className={`px-3 py-1.5 rounded text-xs font-semibold uppercase transition-colors
                 ${mode === m ? 'bg-liberia-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -568,6 +592,16 @@ function ImportTab() {
             {loading ? 'Working…' : mode === 'huggingface' ? `Sync ${hfCount} rows` : `Import ${mode.toUpperCase()}`}
           </button>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="flex justify-between gap-3 mb-4"><div><h2 className="text-lg font-bold">Source review queue</h2><p className="text-sm text-gray-500">Participant-authored and imported prompts remain excluded from releases until their rights, privacy, wording, and domain are reviewed.</p></div><button className="btn-secondary" onClick={loadSourceQueue}>Refresh</button></div>
+        {sourceQueue.length === 0 ? <p className="text-sm text-gray-500">No source prompts are awaiting review.</p> : <div className="space-y-3">{sourceQueue.map((sample) => <div key={sample.id} className="rounded-xl border p-4">
+          <div className="flex flex-wrap gap-2 mb-2"><span className="badge bg-gray-100 text-gray-700">{sample.source_kind}</span><span className="badge bg-blue-50 text-blue-700">{sample.domain}</span><span className="badge bg-amber-50 text-amber-700">{sample.copyright_status}</span></div>
+          <p className="font-medium text-gray-900">{sample.text}</p>
+          <p className="text-xs text-gray-500 mt-2">{sample.source_citation || 'No source citation'} · {sample.specialist_review_status}</p>
+          <div className="flex gap-2 mt-3"><button className="btn-primary" disabled={reviewingSource === sample.id} onClick={() => reviewSource(sample, 'APPROVED')}>Approve source</button><button className="btn-secondary" disabled={reviewingSource === sample.id} onClick={() => reviewSource(sample, 'REJECTED')}>Reject</button></div>
+        </div>)}</div>}
       </div>
     </div>
   );

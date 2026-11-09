@@ -44,7 +44,11 @@ async function submitTranslation({
       err.status = 404;
       throw err;
     }
-    if (!sample.source_release_eligible) {
+    const provenance = typeof sample.provenance_metadata === 'string'
+      ? JSON.parse(sample.provenance_metadata || '{}')
+      : (sample.provenance_metadata || {});
+    const isPendingContributorSource = sample.source_kind === 'MANUAL' && provenance.contributor_generated === true;
+    if (!sample.source_release_eligible && !isPendingContributorSource) {
       const err = new Error('This source prompt has not passed provenance and rights review');
       err.status = 409;
       throw err;
