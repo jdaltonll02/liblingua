@@ -12,6 +12,10 @@ function handle(action) {
 
 const listActive = handle(async (req, res) => res.json(await service.listActiveMetadata(req.query.language)));
 const listAll = handle(async (_req, res) => res.json(await service.listAllMetadata()));
+const listApprovals = handle(async (req, res) => res.json({ approvals: await service.listGovernanceApprovals({
+  resourceType: req.query.resource_type,
+  resourceId: req.query.resource_id,
+}) }));
 const createVariety = handle(async (req, res) => res.status(201).json(await service.createVariety(req.body)));
 const createOrthography = handle(async (req, res) => res.status(201).json(await service.createOrthography(req.body)));
 const createGuideline = handle(async (req, res) => res.status(201).json(await service.createGuideline(req.body)));
@@ -31,4 +35,4 @@ const activate = handle(async (req, res) => res.json(await service.activateResou
 const myProfiles = handle(async (req, res) => res.json(await service.getContributorProfiles(req.user.id)));
 const upsertMyProfile = handle(async (req, res) => res.json(await service.upsertContributorProfile(req.user.id, req.body)));
 
-module.exports = { listActive, listAll, createVariety, createOrthography, createGuideline, approve, activate, myProfiles, upsertMyProfile };
+module.exports = { listActive, listAll, listApprovals, createVariety, createOrthography, createGuideline, approve, activate, myProfiles, upsertMyProfile };

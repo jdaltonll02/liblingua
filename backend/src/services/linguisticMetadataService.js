@@ -153,7 +153,21 @@ async function assertGovernanceApprovals(resourceType, resourceId, { since } = {
       throw httpError(`An APPROVED ${role.toLowerCase()} governance decision is required`, 409);
     }
   }
+  if (latestByRole.get('COMMUNITY').approver_id === latestByRole.get('RESEARCH').approver_id) {
+    throw httpError('Community and research approvals must come from different accounts', 409);
+  }
   return Object.fromEntries(latestByRole);
+}
+
+async function listGovernanceApprovals({ resourceType, resourceId } = {}) {
+  return prisma.governanceApproval.findMany({
+    where: {
+      ...(resourceType ? { resource_type: resourceType } : {}),
+      ...(resourceId ? { resource_id: resourceId } : {}),
+    },
+    include: { approver: { select: { id: true, name: true, email: true, role: true } } },
+    orderBy: { decided_at: 'desc' },
+  });
 }
 
 async function activateResource({ resourceType, resourceId, activatedBy }) {
@@ -262,4 +276,5 @@ module.exports = {
   recordApproval, activateResource, upsertContributorProfile, getContributorProfiles,
   validateSubmissionMetadata,
   assertGovernanceApprovals,
+  listGovernanceApprovals,
 };

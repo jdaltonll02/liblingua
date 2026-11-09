@@ -16,6 +16,8 @@ import { listDonations } from '../api/donations';
 import { listCampaigns, createCampaign, updateCampaign, deleteCampaign } from '../api/campaigns';
 import ManualTranslateTab from '../components/ManualTranslateTab';
 import api from '../api/client';
+import ResearchGovernanceTab from '../components/ResearchGovernanceTab';
+import ReleaseManagementTab from '../components/ReleaseManagementTab';
 
 const DOMAINS = ['general', 'health', 'legal', 'education', 'news', 'conversational'];
 
@@ -53,21 +55,22 @@ function ErrorBanner({ message, onDismiss }) {
 export default function Admin() {
   const { user: currentUser } = useAuth();
   const isAdminOrAbove = currentUser?.is_admin || ['SUPER_ADMIN','ADMIN'].includes(currentUser?.role);
-  const [activeTab, setActiveTab] = useState('translations');
+  const [activeTab, setActiveTab] = useState('governance');
 
   const ALL_TABS = [
-    { id: 'manual',        label: 'My Translate',  adminOnly: false },
-    { id: 'translations',  label: 'Translations',  roles: ['SUPER_ADMIN','ADMIN','ANALYST'] },
-    { id: 'reviews',       label: 'Review Queue',  roles: ['SUPER_ADMIN','ADMIN','MODERATOR','RESEARCHER'] },
-    { id: 'import',        label: 'Import',        adminOnly: false },
-    { id: 'languages',     label: 'Languages',     adminOnly: false },
-    { id: 'dataset',       label: 'Dataset',       adminOnly: false },
-    { id: 'researchers',   label: 'Researchers',   adminOnly: true  },
-    { id: 'contributors',  label: 'Contributors',  adminOnly: true  },
-    { id: 'stats',         label: 'Stats',         adminOnly: false },
-    { id: 'campaigns',     label: 'Campaigns',     adminOnly: false },
-    { id: 'support',       label: 'Support',       adminOnly: false },
-    { id: 'donations',     label: 'Donations',     adminOnly: false },
+    { id: 'governance',    label: 'Readiness',      group: 'Research', roles: ['SUPER_ADMIN','ADMIN','RESEARCHER'] },
+    { id: 'dataset',       label: 'Releases',       group: 'Research', roles: ['SUPER_ADMIN','ADMIN','RESEARCHER'] },
+    { id: 'manual',        label: 'Manual Entry',   group: 'Collection', adminOnly: false },
+    { id: 'translations',  label: 'Translations',  group: 'Collection', roles: ['SUPER_ADMIN','ADMIN','ANALYST'] },
+    { id: 'reviews',       label: 'Review Queue',  group: 'Collection', roles: ['SUPER_ADMIN','ADMIN','MODERATOR','RESEARCHER'] },
+    { id: 'import',        label: 'Source Prompts', group: 'Collection', adminOnly: false },
+    { id: 'languages',     label: 'Languages',     group: 'Configuration', adminOnly: false },
+    { id: 'researchers',   label: 'Researchers',   group: 'People', adminOnly: true  },
+    { id: 'contributors',  label: 'Contributors',  group: 'People', adminOnly: true  },
+    { id: 'stats',         label: 'Statistics',    group: 'Operations', adminOnly: false },
+    { id: 'campaigns',     label: 'Campaigns',     group: 'Operations', adminOnly: false },
+    { id: 'support',       label: 'Support',       group: 'Operations', adminOnly: false },
+    { id: 'donations',     label: 'Donations',     group: 'Operations', adminOnly: false },
   ];
   const TABS = ALL_TABS.filter((t) =>
     (!t.adminOnly || isAdminOrAbove) && (!t.roles || t.roles.includes(currentUser?.role) || currentUser?.is_admin)
@@ -78,19 +81,22 @@ export default function Admin() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar compact />
 
-      <div className="w-44 flex-shrink-0 bg-white border-r border-gray-100 py-6 hidden md:block">
-        <div className="px-3 mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 px-1">Admin Panel</p>
+      <div className="w-52 flex-shrink-0 bg-white border-r border-gray-200 py-6 hidden lg:block">
+        <div className="px-4 mb-2">
+          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-liberia-red">Admin workspace</p>
         </div>
-        <nav className="px-3 space-y-1">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
+        <nav className="px-3">
+          {TABS.map((t, index) => (
+            <div key={t.id}>
+              {(index === 0 || TABS[index - 1]?.group !== t.group) && <p className="px-3 pt-4 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">{t.group}</p>}
+              <button onClick={() => setActiveTab(t.id)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                ${activeTab === t.id ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                ${activeTab === t.id ? 'bg-liberia-red/10 text-liberia-red font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}>
               {t.label}
-            </button>
+              </button>
+            </div>
           ))}
         </nav>
       </div>
@@ -105,14 +111,15 @@ export default function Admin() {
         ))}
       </div>
 
-      <main className="flex-1 px-6 py-8 pb-20 md:pb-8">
+      <main className="flex-1 min-w-0 px-5 sm:px-8 xl:px-10 py-8 pb-20 md:pb-8">
         <ErrorBoundary key={activeTab}>
+          {activeTab === 'governance'    && <ResearchGovernanceTab onNavigate={setActiveTab} />}
           {activeTab === 'manual'        && <ManualTranslateTab />}
           {activeTab === 'translations'  && <TranslationsTab />}
           {activeTab === 'reviews'       && <ReviewQueueTab />}
           {activeTab === 'import'        && <ImportTab />}
           {activeTab === 'languages'     && <LanguagesTab />}
-          {activeTab === 'dataset'       && <DatasetTab />}
+          {activeTab === 'dataset'       && <ReleaseManagementTab />}
           {activeTab === 'researchers'   && <ResearchersTab />}
           {activeTab === 'contributors'  && <ContributorsTab />}
           {activeTab === 'stats'         && <StatsTab />}
@@ -190,7 +197,7 @@ function TranslationsTab() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">Translations</h1>
+      <div className="mb-6"><p className="text-xs font-bold uppercase tracking-[.2em] text-liberia-red">Collection review</p><h1 className="text-3xl font-black text-gray-950 mt-1">Translations</h1><p className="text-sm text-gray-500 mt-1">Assign independent reviewers and monitor annotation status.</p></div>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <select className="input-field w-48" value={language}
@@ -207,7 +214,7 @@ function TranslationsTab() {
         <button onClick={load} className="btn-secondary">Refresh</button>
         {meta && (
           <span className="text-sm text-gray-500 ml-auto">
-            {meta.total} total · page {meta.page} of {meta.pages}
+            {meta.total === 0 ? '0 results' : `${meta.total} total · page ${meta.page} of ${meta.pages}`}
           </span>
         )}
       </div>
@@ -216,7 +223,7 @@ function TranslationsTab() {
         <p className="text-gray-400">Loading…</p>
       ) : (
         <div className="space-y-3">
-          {translations.length === 0 && <p className="text-gray-400">No translations found.</p>}
+          {translations.length === 0 && <div className="card text-center py-14"><div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xl">✓</div><h2 className="font-black text-gray-800 mt-4">No translations awaiting administration</h2><p className="text-sm text-gray-500 mt-2 max-w-lg mx-auto">Collection may be paused while policies and language resources are being approved. Check Readiness for the exact blockers.</p><button className="btn-secondary mt-5" onClick={load}>Refresh</button></div>}
           {translations.map((t) => (
             <div key={t.id} className="card">
               <div className="grid md:grid-cols-2 gap-4">

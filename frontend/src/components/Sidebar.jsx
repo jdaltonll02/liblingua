@@ -11,7 +11,7 @@ const ADMIN_NAV = [
   { to: '/admin', label: 'Admin Panel', icon: ShieldIcon },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ compact = false }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -27,30 +27,30 @@ export default function Sidebar() {
        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`;
 
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col bg-white border-r border-gray-200 min-h-screen">
+    <aside className={`${compact ? 'w-20' : 'w-56'} flex-shrink-0 flex flex-col bg-white border-r border-gray-200 min-h-screen sticky top-0 h-screen transition-[width]`}>
       {/* Logo */}
-      <a href="/" className="flex items-center px-4 py-4 border-b border-gray-100 hover:opacity-80 transition-opacity">
-        <img src="/logo_black.svg" alt="liblingua" className="h-10 w-auto" />
+      <a href="/" className={`flex items-center border-b border-gray-100 hover:opacity-80 transition-opacity bg-gray-50 ${compact ? 'justify-center px-2 py-4' : 'px-4 py-3'}`}>
+        {compact ? <span className="w-10 h-10 rounded-full bg-liberia-red text-white grid place-items-center text-sm font-black">LL</span> : <img src="/logo_white.svg" alt="LibLingua" className="h-12 w-auto max-w-full object-contain" />}
       </a>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className={`flex-1 py-4 space-y-1 ${compact ? 'px-2' : 'px-3'}`}>
         {NAV.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} className={linkClass} end>
+          <NavLink key={to} to={to} className={({ isActive }) => `${linkClass({ isActive })} ${compact ? 'justify-center !px-2' : ''}`} end title={compact ? label : undefined}>
             <Icon className="w-4 h-4 flex-shrink-0" />
-            {label}
+            {!compact && label}
           </NavLink>
         ))}
 
         {user?.is_admin && (
           <>
-            <div className="pt-3 pb-1 px-1">
+            <div className={`pt-3 pb-1 px-1 ${compact ? 'hidden' : ''}`}>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Admin</p>
             </div>
             {ADMIN_NAV.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} className={linkClass}>
+              <NavLink key={to} to={to} className={({ isActive }) => `${linkClass({ isActive })} ${compact ? 'justify-center !px-2' : ''}`} title={compact ? label : undefined}>
                 <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
+                {!compact && label}
               </NavLink>
             ))}
           </>
@@ -58,22 +58,23 @@ export default function Sidebar() {
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-4 border-t border-gray-100">
-        <div className="flex items-center gap-2 mb-3 px-1">
+      <div className={`${compact ? 'px-2' : 'px-3'} py-4 border-t border-gray-100`}>
+        <div className={`flex items-center gap-2 mb-3 px-1 ${compact ? 'justify-center' : ''}`}>
           <div className="w-7 h-7 rounded-full bg-liberia-red text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
             {user?.name?.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
+          <div className={`min-w-0 ${compact ? 'hidden' : ''}`}>
             <p className="text-xs font-semibold text-gray-800 truncate">{user?.name}</p>
             <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors font-medium"
+          className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors font-medium ${compact ? 'justify-center !px-2' : ''}`}
+          title={compact ? 'Logout' : undefined}
         >
           <LogoutIcon className="w-4 h-4" />
-          Logout
+          {!compact && 'Logout'}
         </button>
       </div>
     </aside>

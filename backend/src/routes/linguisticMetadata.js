@@ -10,6 +10,7 @@ const uuid = (field) => body(field).isUUID().withMessage(`${field} must be a UUI
 
 router.get('/', controller.listActive);
 router.get('/admin', admin, controller.listAll);
+router.get('/approvals', admin, controller.listApprovals);
 router.get('/profiles/mine', requireAuth, controller.myProfiles);
 router.put('/profiles/mine', requireAuth, [
   uuid('variety_id'),
