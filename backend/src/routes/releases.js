@@ -1,12 +1,12 @@
 const { Router } = require('express');
 const { body, query } = require('express-validator');
 const { validate } = require('../middleware/validate');
-const { requireRole } = require('../middleware/auth');
+const { requireResearchAdmin } = require('../middleware/auth');
 const { requireAuthOrApiKey } = require('../middleware/requireAuthOrApiKey');
 const controller = require('../controllers/releaseController');
 
 const router = Router();
-const admin = requireRole('SUPER_ADMIN', 'ADMIN', 'RESEARCHER');
+const admin = requireResearchAdmin;
 
 router.get('/', controller.listPublic);
 router.get('/admin', admin, controller.listAdmin);

@@ -46,4 +46,16 @@ function requireAdmin(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, requireAdmin, requireRole };
+// Narrow guard for research-governance administration. Legacy administrators
+// may predate the Role enum but are allowed only on the governance routes that
+// explicitly opt into this compatibility guard.
+function requireResearchAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (!req.user.is_admin && !['SUPER_ADMIN', 'ADMIN', 'RESEARCHER'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Research governance permissions required' });
+    }
+    next();
+  });
+}
+
+module.exports = { requireAuth, requireAdmin, requireRole, requireResearchAdmin };

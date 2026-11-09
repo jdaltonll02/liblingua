@@ -1,13 +1,13 @@
 const { Router } = require('express');
 const { body } = require('express-validator');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireResearchAdmin } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { activePolicies, allPolicies, myConsent, createConsentEvent } = require('../controllers/consentController');
 
 const router = Router();
 
 router.get('/active', activePolicies);
-router.get('/admin/policies', requireRole('SUPER_ADMIN', 'ADMIN', 'RESEARCHER'), allPolicies);
+router.get('/admin/policies', requireResearchAdmin, allPolicies);
 router.get('/me', requireAuth, myConsent);
 router.post(
   '/',

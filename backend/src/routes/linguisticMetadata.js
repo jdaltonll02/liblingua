@@ -1,11 +1,11 @@
 const { Router } = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireResearchAdmin } = require('../middleware/auth');
 const controller = require('../controllers/linguisticMetadataController');
 
 const router = Router();
-const admin = requireRole('SUPER_ADMIN', 'ADMIN', 'RESEARCHER');
+const admin = requireResearchAdmin;
 const uuid = (field) => body(field).isUUID().withMessage(`${field} must be a UUID`);
 
 router.get('/', controller.listActive);
