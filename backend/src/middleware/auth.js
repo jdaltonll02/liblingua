@@ -32,8 +32,9 @@ function requireRole(...roles) {
   };
 }
 
-// Elevated access: translation/data/stats/language management
-// (RESEARCHER gets read+validate access but cannot manage users)
+// Elevated access: translation/data/stats/language management.
+// This legacy guard is retained for route compatibility; Phase 4 will replace
+// it with action-specific research workflow permissions.
 const ELEVATED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'ANALYST', 'RESEARCHER'];
 
 function requireAdmin(req, res, next) {

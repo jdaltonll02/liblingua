@@ -4,6 +4,7 @@ const {
   fetchTranslationsForExport,
   toExportRecord,
 } = require('../services/exportService');
+const { resolveExportAccess } = require('../services/exportAccessService');
 
 const LANGUAGES    = ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn', 'dan'];
 const JSON_PAGE_SIZE = 1000;
@@ -24,14 +25,20 @@ function parseExportParams(req) {
   // Use the configured base URL rather than trusting request headers (prevents SSRF)
   const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
   const raw = req.query.raw === 'true';
-  return { language, validatedOnly: validated_only === 'true', minQuality, baseUrl, raw };
+  const { requested: accessTier } = resolveExportAccess(req);
+  if (accessTier !== 'INTERNAL') {
+    const err = new Error('Live-table exports are retired. Download a frozen artifact from /api/releases.');
+    err.status = 410;
+    throw err;
+  }
+  return { language, validatedOnly: validated_only === 'true', minQuality, baseUrl, raw, accessTier };
 }
 
 // ── CSV — streamed, never loads full dataset into memory ──────────────────────
 
 async function exportCsv(req, res, next) {
   try {
-    const { language, validatedOnly, minQuality, baseUrl, raw } = parseExportParams(req);
+    const { language, validatedOnly, minQuality, baseUrl, raw, accessTier } = parseExportParams(req);
     const suffix = [validatedOnly ? 'validated' : '', raw ? 'raw' : ''].filter(Boolean).join('_');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${language || 'all'}${suffix ? '_' + suffix : ''}_liblingua_dataset.csv"`);
@@ -40,7 +47,7 @@ async function exportCsv(req, res, next) {
     csvStream.pipe(res);
 
     for await (const t of streamTranslationsForExport({ language, validatedOnly, minQuality })) {
-      csvStream.write(toExportRecord(t, { baseUrl, raw }));
+      csvStream.write(toExportRecord(t, { baseUrl, raw, accessTier }));
     }
     csvStream.end();
   } catch (err) {
@@ -57,14 +64,14 @@ async function exportJson(req, res, next) {
     const limit  = Math.min(JSON_PAGE_SIZE, Math.max(1, parseInt(req.query.limit, 10) || JSON_PAGE_SIZE));
     const offset = (page - 1) * limit;
 
-    const { language: lang, validatedOnly, minQuality, baseUrl, raw } = parseExportParams(req);
+    const { language: lang, validatedOnly, minQuality, baseUrl, raw, accessTier } = parseExportParams(req);
     const { rows, total } = await fetchTranslationsForExport({
       language: lang, validatedOnly, minQuality, skip: offset, take: limit,
     });
 
     res.setHeader('Content-Disposition', `attachment; filename="${lang || 'all'}_liblingua_dataset_p${page}.json"`);
     res.json({
-      data:  rows.map((t) => toExportRecord(t, { baseUrl, raw })),
+      data:  rows.map((t) => toExportRecord(t, { baseUrl, raw, accessTier })),
       meta: {
         total,
         page,
@@ -72,9 +79,10 @@ async function exportJson(req, res, next) {
         pages:    Math.ceil(total / limit),
         has_more: offset + rows.length < total,
         mode: raw ? 'raw' : 'preprocessed',
+        access_tier: accessTier,
         ...(raw ? {} : {
           preprocessing: {
-            splits: 'train(80%)/validation(10%)/test(10%) — deterministic, based on record ID',
+            splits: 'train(80%)/validation(10%)/test(10%) — deterministic, grouped by English source sample',
             language_codes: 'ISO 639-3 and BCP-47 included per record',
             text: 'whitespace normalised',
             validated_only: validatedOnly,
@@ -93,13 +101,13 @@ async function exportJson(req, res, next) {
 
 async function exportHuggingFace(req, res, next) {
   try {
-    const { language, validatedOnly, minQuality, baseUrl, raw } = parseExportParams(req);
+    const { language, validatedOnly, minQuality, baseUrl, raw, accessTier } = parseExportParams(req);
     const suffix = [validatedOnly ? 'validated' : '', raw ? 'raw' : ''].filter(Boolean).join('_');
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Content-Disposition', `attachment; filename="${language || 'all'}${suffix ? '_' + suffix : ''}_liblingua_dataset.jsonl"`);
 
     for await (const t of streamTranslationsForExport({ language, validatedOnly, minQuality })) {
-      res.write(JSON.stringify(toExportRecord(t, { baseUrl, raw })) + '\n');
+      res.write(JSON.stringify(toExportRecord(t, { baseUrl, raw, accessTier })) + '\n');
     }
     res.end();
   } catch (err) {

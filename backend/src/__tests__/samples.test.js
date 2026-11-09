@@ -3,11 +3,17 @@ const app = require('../index');
 const prisma = require('../utils/prisma');
 const { signToken } = require('../utils/jwt');
 
+// This suite is an opt-in integration test because it creates and deletes rows.
+// It must only use an isolated database supplied through TEST_DATABASE_URL.
+const hasTestDatabase = Boolean(process.env.TEST_DATABASE_URL);
+const describeWithDatabase = hasTestDatabase ? describe : describe.skip;
+
 let contributorId;
 let sampleId;
 let authCookie;
 
 beforeAll(async () => {
+  if (!hasTestDatabase) return;
   // Ensure languages exist
   const langs = ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn', 'dan'];
   for (const value of langs) {
@@ -51,6 +57,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (!hasTestDatabase) return;
   await prisma.translation.deleteMany({ where: { contributor_id: contributorId } });
   await prisma.englishSample.delete({ where: { id: sampleId } }).catch(() => {});
   await prisma.contributor.delete({ where: { id: contributorId } }).catch(() => {});
@@ -59,7 +66,7 @@ afterAll(async () => {
 
 // ── Samples ───────────────────────────────────────────────────────────────────
 
-describe('GET /api/samples/random', () => {
+describeWithDatabase('GET /api/samples/random', () => {
   it('returns 401 without auth', async () => {
     const res = await request(app).get('/api/samples/random?language=kpelle');
     expect(res.status).toBe(401);
@@ -85,7 +92,7 @@ describe('GET /api/samples/random', () => {
   });
 });
 
-describe('GET /api/samples/:id', () => {
+describeWithDatabase('GET /api/samples/:id', () => {
   it('returns the sample by ID', async () => {
     const res = await request(app)
       .get(`/api/samples/${sampleId}`)
@@ -102,7 +109,7 @@ describe('GET /api/samples/:id', () => {
   });
 });
 
-describe('GET /api/samples/progress', () => {
+describeWithDatabase('GET /api/samples/progress', () => {
   it('returns progress data for a valid language', async () => {
     const res = await request(app)
       .get('/api/samples/progress?language=kpelle')
@@ -114,7 +121,7 @@ describe('GET /api/samples/progress', () => {
 
 // ── Translations ──────────────────────────────────────────────────────────────
 
-describe('POST /api/translations', () => {
+describeWithDatabase('POST /api/translations', () => {
   it('returns 401 without auth', async () => {
     const res = await request(app).post('/api/translations').send({});
     expect(res.status).toBe(401);
@@ -142,7 +149,7 @@ describe('POST /api/translations', () => {
   });
 });
 
-describe('GET /api/translations/mine', () => {
+describeWithDatabase('GET /api/translations/mine', () => {
   it('returns translations for the authenticated user', async () => {
     const res = await request(app)
       .get('/api/translations/mine')

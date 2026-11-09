@@ -62,7 +62,7 @@ const FAQS = [
       },
       {
         q: 'Why does a sample stop appearing after 3 translations?',
-        a: 'Each English sample is locked once it has received 3 translations in a given language. This ensures diversity — three independent translations allow researchers to measure inter-annotator agreement and select the best version. The same sample can still receive 3 translations in each of the other 7 languages independently.',
+        a: 'Each English sample is locked once it has received 3 translations in a given language. The translations are independently reviewed using a structured rubric. Surface-form similarity may flag unusual differences for review, but it is not treated as inter-annotator agreement or proof that one valid translation is better than another.',
       },
     ],
   },

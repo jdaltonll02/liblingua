@@ -19,6 +19,7 @@ import Campaigns      from './pages/Campaigns';
 import ApiDocs        from './pages/ApiDocs';
 import Datasets       from './pages/Datasets';
 import ProtectedRoute from './components/ProtectedRoute';
+import Consent        from './pages/Consent';
 
 export default function App() {
   return (
@@ -54,6 +55,9 @@ export default function App() {
             } />
             <Route path="/translate" element={
               <ProtectedRoute><Translate /></ProtectedRoute>
+            } />
+            <Route path="/consent" element={
+              <ProtectedRoute><Consent /></ProtectedRoute>
             } />
             <Route path="/admin" element={
               <ProtectedRoute adminOnly>

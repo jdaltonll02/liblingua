@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { getTranslations, validateTranslation } from '../api/translations';
+import {
+  getTranslations, getReviewQueue, submitReview,
+  getEligibleReviewers, assignReviewers,
+} from '../api/translations';
 import { getStats } from '../api/stats';
 import { useLanguages, LANGUAGES as FALLBACK_LANGUAGES } from '../components/LanguageSelector';
 import { listPublished, publishLanguage, unpublishLanguage, deletePublication, syncHuggingFace } from '../api/dataset';
@@ -54,7 +57,8 @@ export default function Admin() {
 
   const ALL_TABS = [
     { id: 'manual',        label: 'My Translate',  adminOnly: false },
-    { id: 'translations',  label: 'Translations',  adminOnly: false },
+    { id: 'translations',  label: 'Translations',  roles: ['SUPER_ADMIN','ADMIN','ANALYST'] },
+    { id: 'reviews',       label: 'Review Queue',  roles: ['SUPER_ADMIN','ADMIN','MODERATOR','RESEARCHER'] },
     { id: 'import',        label: 'Import',        adminOnly: false },
     { id: 'languages',     label: 'Languages',     adminOnly: false },
     { id: 'dataset',       label: 'Dataset',       adminOnly: false },
@@ -65,7 +69,12 @@ export default function Admin() {
     { id: 'support',       label: 'Support',       adminOnly: false },
     { id: 'donations',     label: 'Donations',     adminOnly: false },
   ];
-  const TABS = ALL_TABS.filter((t) => !t.adminOnly || isAdminOrAbove);
+  const TABS = ALL_TABS.filter((t) =>
+    (!t.adminOnly || isAdminOrAbove) && (!t.roles || t.roles.includes(currentUser?.role) || currentUser?.is_admin)
+  );
+  useEffect(() => {
+    if (TABS.length > 0 && !TABS.some((tab) => tab.id === activeTab)) setActiveTab(TABS[0].id);
+  }, [currentUser?.role, currentUser?.is_admin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -100,6 +109,7 @@ export default function Admin() {
         <ErrorBoundary key={activeTab}>
           {activeTab === 'manual'        && <ManualTranslateTab />}
           {activeTab === 'translations'  && <TranslationsTab />}
+          {activeTab === 'reviews'       && <ReviewQueueTab />}
           {activeTab === 'import'        && <ImportTab />}
           {activeTab === 'languages'     && <LanguagesTab />}
           {activeTab === 'dataset'       && <DatasetTab />}
@@ -126,9 +136,10 @@ function TranslationsTab() {
   const [language, setLanguage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [validating, setValidating] = useState(null);
-  const [scores, setScores] = useState({});
   const [audioFilter, setAudioFilter] = useState(''); // '' | 'true' | 'false'
+  const [reviewers, setReviewers] = useState([]);
+  const [reviewerChoices, setReviewerChoices] = useState({});
+  const [assigning, setAssigning] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -143,22 +154,37 @@ function TranslationsTab() {
   }, [language, page, audioFilter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    getEligibleReviewers()
+      .then((res) => setReviewers(res.data.reviewers || []))
+      .catch(() => setReviewers([]));
+  }, []);
 
-  const handleValidate = async (id, is_validated) => {
-    setValidating(id);
-    const score = scores[id] !== undefined ? parseFloat(scores[id]) : undefined;
-    // Optimistic update
-    setTranslations((prev) =>
-      prev.map((t) => t.id === id ? { ...t, is_validated, quality_score: score ?? t.quality_score } : t)
-    );
+  const chooseReviewer = (translationId, index, reviewerId) => {
+    setReviewerChoices((current) => {
+      const choices = [...(current[translationId] || ['', ''])];
+      choices[index] = reviewerId;
+      return { ...current, [translationId]: choices };
+    });
+  };
+
+  const assign = async (translation) => {
+    const ids = (reviewerChoices[translation.id] || []).filter(Boolean);
+    if (ids.length !== 2 || ids[0] === ids[1]) {
+      setError('Choose two different reviewers.');
+      return;
+    }
+    setAssigning(translation.id);
+    setError('');
     try {
-      await validateTranslation(id, { is_validated, quality_score: score });
+      await assignReviewers(translation.id, { reviewer_ids: ids, is_blind: true });
+      setTranslations((items) => items.map((item) => item.id === translation.id
+        ? { ...item, review_state: 'IN_REVIEW' }
+        : item));
     } catch (err) {
-      setError(err.response?.data?.error || 'Validation failed.');
-      // Revert optimistic update on error
-      load();
+      setError(err.response?.data?.error || 'Reviewer assignment failed.');
     } finally {
-      setValidating(null);
+      setAssigning(null);
     }
   };
 
@@ -207,17 +233,23 @@ function TranslationsTab() {
                 <span>By: <strong>{t.contributor?.name}</strong></span>
                 <span>Region: {t.contributor?.region_of_origin}</span>
                 {t.dialect && <span>Dialect: {t.dialect}</span>}
-                <span className={`badge ${t.is_validated ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                  {t.is_validated ? '✓ Validated' : 'Pending'}
+                <span className={`badge ${t.review_state === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  {(t.review_state || 'PENDING_REVIEW').replaceAll('_', ' ')}
                 </span>
                 {t.quality_score != null && <span>Q: {(t.quality_score * 100).toFixed(0)}%</span>}
                 {t.gold_sim_score != null && <span className="text-purple-500">Gold sim: {(t.gold_sim_score * 100).toFixed(0)}%</span>}
-                {t.sample?.iaa_score != null && (
-                  <span className={`font-semibold ${t.sample.iaa_score >= 0.6 ? 'text-green-600' : t.sample.iaa_score >= 0.3 ? 'text-amber-600' : 'text-red-500'}`}
-                    title="Inter-annotator agreement — how similar the 3 translations are to each other">
-                    IAA: {(t.sample.iaa_score * 100).toFixed(0)}%
-                  </span>
-                )}
+                {(() => {
+                  const signal = t.sample?.surfaceSimilaritySignals?.find(
+                    (item) => item.target_language === t.target_language
+                      && item.method === 'character_3gram_jaccard'
+                  );
+                  return signal ? (
+                    <span className="font-semibold text-gray-500"
+                      title="Surface-form similarity triage signal only; this is not inter-annotator agreement">
+                      Surface similarity: {(signal.score * 100).toFixed(0)}%
+                    </span>
+                  ) : null;
+                })()}
               </div>
 
               {/* Audio players */}
@@ -237,34 +269,30 @@ function TranslationsTab() {
                   )}
                 </div>
               )}
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                <input type="number" min="0" max="1" step="0.01" placeholder="Quality 0–1"
-                  className="input-field w-32 text-sm"
-                  value={scores[t.id] ?? t.quality_score ?? ''}
-                  onChange={(e) => setScores((s) => ({ ...s, [t.id]: e.target.value }))} />
-                {(() => {
-                  const raw = scores[t.id] ?? t.quality_score;
-                  const val = parseFloat(raw);
-                  const validScore = raw !== '' && raw != null && !isNaN(val) && val >= 0 && val <= 1;
-                  return (
-                    <>
-                      <button
-                        onClick={() => handleValidate(t.id, true)}
-                        disabled={validating === t.id || !validScore}
-                        title={!validScore ? 'Enter a quality score (0–1) before validating' : ''}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
-                        Validate
-                      </button>
-                      {!validScore && (
-                        <span className="text-xs text-amber-600 font-medium">Score required to validate</span>
-                      )}
-                    </>
-                  );
-                })()}
-                <button onClick={() => handleValidate(t.id, false)} disabled={validating === t.id}
-                  className="bg-red-500 hover:bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50">
-                  Reject
-                </button>
+              <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-2">
+                  Validation requires two assigned, structured reviews. The author cannot be selected.
+                </p>
+                {['PENDING_REVIEW', 'CHANGES_REQUESTED'].includes(t.review_state || 'PENDING_REVIEW') && (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {[0, 1].map((index) => (
+                      <select key={index} className="input-field text-xs w-52"
+                        value={(reviewerChoices[t.id] || [])[index] || ''}
+                        onChange={(e) => chooseReviewer(t.id, index, e.target.value)}>
+                        <option value="">Reviewer {index + 1}</option>
+                        {reviewers.filter((reviewer) => reviewer.id !== t.contributor?.id).map((reviewer) => (
+                          <option key={reviewer.id} value={reviewer.id}>
+                            {reviewer.name} · {reviewer.native_language || reviewer.role}
+                          </option>
+                        ))}
+                      </select>
+                    ))}
+                    <button onClick={() => assign(t)} disabled={assigning === t.id}
+                      className="bg-liberia-blue hover:bg-blue-800 text-white text-xs font-semibold px-3 py-2 rounded-lg disabled:opacity-50">
+                      {assigning === t.id ? 'Assigning…' : 'Assign blind reviewers'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -278,6 +306,132 @@ function TranslationsTab() {
           <span className="text-sm text-gray-500 self-center">Page {page} of {meta.pages}</span>
           <button onClick={() => setPage((p) => Math.min(meta.pages, p + 1))} disabled={page === meta.pages}
             className="btn-secondary text-sm disabled:opacity-40">Next →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewQueueTab() {
+  const [assignments, setAssignments] = useState([]);
+  const [forms, setForms] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError('');
+    getReviewQueue()
+      .then((res) => setAssignments(res.data.assignments || []))
+      .catch((err) => setError(err.response?.data?.error || 'Failed to load review queue.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const valueFor = (id) => forms[id] || {
+    decision: 'APPROVE',
+    adequacy: '', fluency: '', orthography: '', dialect_fit: '',
+    cultural_appropriateness: '', audio_intelligibility: '', comments: '',
+  };
+  const setField = (id, field, value) => setForms((current) => ({
+    ...current,
+    [id]: { ...valueFor(id), [field]: value },
+  }));
+
+  const submit = async (assignment) => {
+    const form = valueFor(assignment.id);
+    const payload = { decision: form.decision, comments: form.comments };
+    for (const field of ['adequacy', 'fluency', 'orthography', 'dialect_fit', 'cultural_appropriateness', 'audio_intelligibility']) {
+      if (form[field] !== '') payload[field] = Number(form[field]);
+    }
+    setSubmitting(assignment.id);
+    setError('');
+    try {
+      await submitReview(assignment.translation.id, payload);
+      setAssignments((items) => items.filter((item) => item.id !== assignment.id));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Review submission failed.');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Blind Review Queue</h1>
+      <p className="text-sm text-gray-500 mb-4">
+        Contributor identity is hidden. Score the current revision independently; two matching reviews are required.
+      </p>
+      <ErrorBanner message={error} onDismiss={() => setError('')} />
+      {loading ? <p className="text-gray-400">Loading…</p> : assignments.length === 0 ? (
+        <div className="card text-sm text-gray-500">No active review assignments.</div>
+      ) : (
+        <div className="space-y-4">
+          {assignments.map((assignment) => {
+            const t = assignment.translation;
+            const form = valueFor(assignment.id);
+            return (
+              <div key={assignment.id} className="card space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Source (English)</p>
+                    <p className="text-sm">{t.sample?.text}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1 capitalize">{t.target_language} · revision {t.current_revision}</p>
+                    <p className="text-sm font-medium">{t.translated_text}</p>
+                    {t.dialect && <p className="text-xs text-gray-500 mt-1">Dialect: {t.dialect}</p>}
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    ['adequacy', 'Meaning / adequacy'],
+                    ['fluency', 'Fluency'],
+                    ['orthography', 'Orthography'],
+                    ['dialect_fit', 'Dialect fit'],
+                    ['cultural_appropriateness', 'Cultural appropriateness'],
+                    ...(t.audio_path ? [['audio_intelligibility', 'Audio intelligibility']] : []),
+                  ].map(([field, label]) => (
+                    <label key={field} className="text-xs font-semibold text-gray-600">
+                      {label}
+                      <select value={form[field]} onChange={(e) => setField(assignment.id, field, e.target.value)}
+                        className="input-field mt-1 text-sm">
+                        <option value="">Choose 1–5</option>
+                        {[1, 2, 3, 4, 5].map((score) => <option key={score} value={score}>{score}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Decision
+                    <select value={form.decision} onChange={(e) => setField(assignment.id, 'decision', e.target.value)}
+                      className="input-field mt-1 text-sm">
+                      <option value="APPROVE">Approve</option>
+                      <option value="REQUEST_CHANGES">Request changes</option>
+                      <option value="REJECT">Reject</option>
+                      <option value="ABSTAIN">Abstain</option>
+                    </select>
+                  </label>
+                  <label className="md:col-span-2 text-xs font-semibold text-gray-600">
+                    Comments
+                    <textarea rows={2} value={form.comments}
+                      onChange={(e) => setField(assignment.id, 'comments', e.target.value)}
+                      className="input-field mt-1 text-sm resize-none"
+                      placeholder="Required for changes or rejection" />
+                  </label>
+                </div>
+                <button onClick={() => submit(assignment)} disabled={submitting === assignment.id}
+                  className="bg-liberia-blue hover:bg-blue-800 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50">
+                  {submitting === assignment.id ? 'Submitting…' : 'Submit independent review'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

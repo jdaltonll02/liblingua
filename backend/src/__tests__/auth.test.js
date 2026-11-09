@@ -2,6 +2,11 @@ const request = require('supertest');
 const app = require('../index');
 const prisma = require('../utils/prisma');
 
+// These tests create real rows and must never run against a deployment database.
+// Provide TEST_DATABASE_URL to enable the suite against an isolated test schema.
+const hasTestDatabase = Boolean(process.env.TEST_DATABASE_URL);
+const describeWithDatabase = hasTestDatabase ? describe : describe.skip;
+
 const TEST_USER = {
   name: 'Test User',
   email: `test_${Date.now()}@example.com`,
@@ -13,11 +18,12 @@ const TEST_USER = {
 };
 
 afterAll(async () => {
+  if (!hasTestDatabase) return;
   await prisma.contributor.deleteMany({ where: { email: TEST_USER.email } });
   await prisma.$disconnect();
 });
 
-describe('POST /api/auth/register', () => {
+describeWithDatabase('POST /api/auth/register', () => {
   it('creates a new contributor and returns 201', async () => {
     const res = await request(app).post('/api/auth/register').send(TEST_USER);
     expect(res.status).toBe(201);
@@ -51,7 +57,7 @@ describe('POST /api/auth/register', () => {
   });
 });
 
-describe('POST /api/auth/login', () => {
+describeWithDatabase('POST /api/auth/login', () => {
   it('returns 401 for wrong password', async () => {
     const res = await request(app)
       .post('/api/auth/login')
@@ -70,7 +76,7 @@ describe('POST /api/auth/login', () => {
   });
 });
 
-describe('GET /api/auth/me', () => {
+describeWithDatabase('GET /api/auth/me', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app).get('/api/auth/me');
     expect(res.status).toBe(401);

@@ -107,10 +107,10 @@ describe('requireAdmin', () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  test('blocks MODERATOR role with 403', () => {
-    const res = makeRes();
-    requireAdmin(makeReq({ cookie: activeToken({ role: 'MODERATOR' }) }), res, jest.fn());
-    expect(res.status).toHaveBeenCalledWith(403);
+  test('allows MODERATOR role through the legacy elevated-access guard', () => {
+    const next = jest.fn();
+    requireAdmin(makeReq({ cookie: activeToken({ role: 'MODERATOR' }) }), makeRes(), next);
+    expect(next).toHaveBeenCalled();
   });
 
   test('blocks unauthenticated request with 401', () => {

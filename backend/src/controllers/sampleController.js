@@ -1,6 +1,11 @@
 const { parse: parseCsv } = require('csv-parse/sync');
 const prisma = require('../utils/prisma');
 const { pickSampleForContributor, getLanguageProgress: _getProgress } = require('../services/sampleService');
+const {
+  initialSourceFields,
+  evaluateSourceEligibility,
+  validateProvenancePatch,
+} = require('../services/sourceProvenanceService');
 
 const DOMAINS     = ['general', 'health', 'legal', 'education', 'news', 'conversational'];
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
@@ -35,12 +40,14 @@ async function getSampleById(req, res, next) {
 
 async function createSample(req, res, next) {
   try {
-    const { text, domain, difficulty, audio_path, is_gold_standard } = req.body;
+    const { text, domain, difficulty, audio_path } = req.body;
     const sample = await prisma.englishSample.create({
       data: {
         text, domain, difficulty,
         audio_path:      audio_path      || null,
-        is_gold_standard: Boolean(is_gold_standard),
+        // Gold references require their own independent approval workflow.
+        is_gold_standard: false,
+        ...initialSourceFields({ text, domain, source: req.body, importedBy: req.user.id }),
       },
     });
     res.status(201).json(sample);
@@ -88,7 +95,13 @@ async function bulkCreateSamples(req, res, next) {
         domain:           s.domain,
         difficulty:       DIFFICULTIES.includes(s.difficulty) ? s.difficulty : 'medium',
         audio_path:       s.audio_path || null,
-        is_gold_standard: s.is_gold_standard === true || s.is_gold_standard === 'true',
+        is_gold_standard: false,
+        ...initialSourceFields({
+          text: s.text,
+          domain: s.domain,
+          source: { ...s, source_kind: s.source_kind || 'DATASET_IMPORT' },
+          importedBy: req.user?.id || null,
+        }),
       });
     }
 
@@ -149,6 +162,15 @@ function mapHFDomain(raw, override) {
 
 async function syncFromHuggingFace(req, res, next) {
   try {
+    // FLORES is now gated with evaluation-only/no-training redistribution
+    // conditions. Importing it into a public training corpus would violate the
+    // intended use, so this legacy sync is deliberately disabled.
+    return res.status(410).json({
+      error: 'FLORES import is disabled because its current access terms prohibit training use and unrestricted redistribution.',
+      action: 'Import only a source corpus whose license and usage terms have been reviewed and recorded.',
+    });
+
+    /* istanbul ignore next -- retained temporarily for migration reference */
     const count          = Math.min(parseInt(req.body.count, 10) || 50, 1000);
     const split          = ['dev', 'devtest'].includes(req.body.split) ? req.body.split : 'dev';
     const domainOverride = req.body.domain_override || null;
@@ -202,4 +224,38 @@ async function syncFromHuggingFace(req, res, next) {
   }
 }
 
-module.exports = { getRandomSample, getSampleById, createSample, bulkCreateSamples, getLanguageProgress, syncFromHuggingFace };
+async function reviewSourceProvenance(req, res, next) {
+  try {
+    const current = await prisma.englishSample.findUnique({ where: { id: req.params.id } });
+    if (!current) return res.status(404).json({ error: 'Sample not found' });
+
+    const patch = validateProvenancePatch(req.body);
+    const candidate = { ...current, ...patch };
+    if (patch.specialist_review_status) {
+      patch.specialist_reviewed_by = req.user.id;
+      patch.specialist_reviewed_at = new Date();
+      candidate.specialist_reviewed_by = req.user.id;
+    }
+    const assessment = evaluateSourceEligibility(candidate);
+    patch.source_release_eligible = assessment.eligible;
+
+    const sample = await prisma.englishSample.update({
+      where: { id: current.id },
+      data: patch,
+    });
+    res.json({ sample, eligibility: assessment });
+  } catch (err) {
+    if (/invalid/i.test(err.message)) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+}
+
+module.exports = {
+  getRandomSample,
+  getSampleById,
+  createSample,
+  bulkCreateSamples,
+  getLanguageProgress,
+  syncFromHuggingFace,
+  reviewSourceProvenance,
+};

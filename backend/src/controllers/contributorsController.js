@@ -13,7 +13,7 @@ async function listContributors(req, res, next) {
     const where = {
       is_active:            true,
       is_profile_complete:  true,
-      translations:         { some: { is_validated: true } },
+      translations:         { some: { review_state: 'APPROVED' } },
     };
     if (lang) where.native_language = lang;
 

@@ -25,6 +25,9 @@ const donationRoutes    = require('./routes/donations');
 const campaignRoutes    = require('./routes/campaigns');
 const badgeRoutes        = require('./routes/badges');
 const researcherRoutes   = require('./routes/researchers');
+const consentRoutes      = require('./routes/consent');
+const linguisticMetadataRoutes = require('./routes/linguisticMetadata');
+const releaseRoutes      = require('./routes/releases');
 const { authLimiter, translationLimiter, generalLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
@@ -68,6 +71,7 @@ app.use(activityLogger);
 
 // Serve uploaded audio files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/research-policies', express.static(path.join(__dirname, '../policies')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',         authLimiter,        authRoutes);
@@ -87,6 +91,9 @@ app.use('/api/donations',    generalLimiter,     donationRoutes);
 app.use('/api/campaigns',    generalLimiter,     campaignRoutes);
 app.use('/api/badges',       generalLimiter,     badgeRoutes);
 app.use('/api/researchers',  generalLimiter,     researcherRoutes);
+app.use('/api/consent',      generalLimiter,     consentRoutes);
+app.use('/api/linguistic-metadata', generalLimiter, linguisticMetadataRoutes);
+app.use('/api/releases',      generalLimiter,     releaseRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

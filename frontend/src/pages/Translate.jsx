@@ -7,6 +7,7 @@ import AudioRecorder from '../components/AudioRecorder';
 import { getRandomSample, getProgress } from '../api/samples';
 import { submitTranslation } from '../api/translations';
 import CampaignBanner from '../components/CampaignBanner';
+import { getLinguisticMetadata, getMyLanguageProfiles, saveMyLanguageProfile } from '../api/linguisticMetadata';
 
 const DOMAIN_COLORS = {
   health: 'bg-green-100 text-green-700',
@@ -38,6 +39,62 @@ export default function Translate() {
   const [progress, setProgress] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | loading | submitting | success | error | exhausted
   const [message, setMessage] = useState('');
+  const [metadata, setMetadata] = useState(null);
+  const [profiles, setProfiles] = useState([]);
+  const [varietyId, setVarietyId] = useState('');
+  const [orthographyId, setOrthographyId] = useState('');
+  const [guidelineId, setGuidelineId] = useState('');
+  const [register, setRegister] = useState('GENERAL');
+  const [uncertainty, setUncertainty] = useState('CONFIDENT');
+  const [annotationOutcome, setAnnotationOutcome] = useState('TRANSLATED');
+  const [alternativeTranslation, setAlternativeTranslation] = useState('');
+  const [annotationNotes, setAnnotationNotes] = useState('');
+  const [containsCodeSwitching, setContainsCodeSwitching] = useState(false);
+  const [codeSwitchingNotes, setCodeSwitchingNotes] = useState('');
+  const [profileDraft, setProfileDraft] = useState({
+    speaking_proficiency: 'PROFICIENT', reading_proficiency: 'WORKING',
+    writing_proficiency: 'WORKING', usage_frequency: 'DAILY', is_first_language: true,
+  });
+
+  const varieties = metadata?.varieties || [];
+  const selectedVariety = varieties.find((item) => item.id === varietyId);
+  const orthographies = selectedVariety?.orthographies || [];
+  const guidelines = (selectedVariety?.guidelines || []).filter(
+    (item) => !item.orthography_id || item.orthography_id === orthographyId,
+  );
+  const hasProfile = profiles.some((profile) => profile.variety_id === varietyId);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([getLinguisticMetadata(language), getMyLanguageProfiles()])
+      .then(([metadataRes, profilesRes]) => {
+        if (!active) return;
+        const languageMetadata = metadataRes.data[0] || null;
+        setMetadata(languageMetadata);
+        setProfiles(profilesRes.data);
+        const firstVariety = languageMetadata?.varieties?.[0];
+        setVarietyId(firstVariety?.id || '');
+        const firstOrthography = firstVariety?.orthographies?.find((item) => item.is_default) || firstVariety?.orthographies?.[0];
+        setOrthographyId(firstOrthography?.id || '');
+        const firstGuideline = firstVariety?.guidelines?.find(
+          (item) => !item.orthography_id || item.orthography_id === firstOrthography?.id,
+        );
+        setGuidelineId(firstGuideline?.id || '');
+      })
+      .catch(() => {
+        if (active) setMetadata(null);
+      });
+    return () => { active = false; };
+  }, [language]);
+
+  useEffect(() => {
+    const firstOrthography = orthographies.find((item) => item.is_default) || orthographies[0];
+    if (!orthographies.some((item) => item.id === orthographyId)) setOrthographyId(firstOrthography?.id || '');
+  }, [varietyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!guidelines.some((item) => item.id === guidelineId)) setGuidelineId(guidelines[0]?.id || '');
+  }, [orthographyId, varietyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchSample = useCallback(async (lang) => {
     setStatus('loading');
@@ -73,7 +130,24 @@ export default function Translate() {
     setLanguage(lang);
   };
 
-  const canSubmit = Boolean(translatedText.trim());
+  const needsText = annotationOutcome === 'TRANSLATED';
+  const canSubmit = Boolean(
+    varietyId && orthographyId && guidelineId && hasProfile &&
+    (needsText ? translatedText.trim() : annotationNotes.trim()) &&
+    (!containsCodeSwitching || codeSwitchingNotes.trim()),
+  );
+
+  const saveProfile = async () => {
+    try {
+      const response = await saveMyLanguageProfile({ variety_id: varietyId, ...profileDraft });
+      setProfiles((current) => [...current.filter((item) => item.variety_id !== varietyId), response.data]);
+      setMessage('Language profile saved. You can now contribute to this variety.');
+      setStatus('success');
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Could not save the language profile.');
+      setStatus('error');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,6 +159,16 @@ export default function Translate() {
       formData.append('sample_id', sample.id);
       formData.append('target_language', language);
       formData.append('translated_text', translatedText.trim());
+      formData.append('language_variety_id', varietyId);
+      formData.append('orthography_id', orthographyId);
+      formData.append('guideline_id', guidelineId);
+      formData.append('register', register);
+      formData.append('uncertainty', uncertainty);
+      formData.append('annotation_outcome', annotationOutcome);
+      formData.append('contains_code_switching', String(containsCodeSwitching));
+      if (codeSwitchingNotes) formData.append('code_switching_notes', codeSwitchingNotes.trim());
+      if (alternativeTranslation) formData.append('alternative_translation', alternativeTranslation.trim());
+      if (annotationNotes) formData.append('annotation_notes', annotationNotes.trim());
       if (dialect) formData.append('dialect', dialect);
       if (englishAudioFile) formData.append('english_audio', englishAudioFile);
       if (audioFile) formData.append('audio', audioFile);
@@ -118,14 +202,51 @@ export default function Translate() {
 
         {/* Language + Progress bar */}
         <div className="card mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             <LanguageSelector value={language} onChange={handleLanguageChange} className="flex-1" />
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Your Dialect (optional)</label>
-              <input className="input-field" placeholder="e.g. Central Kpelle"
-                value={dialect} onChange={(e) => setDialect(e.target.value)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Language variety</label>
+              <select className="input-field" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
+                <option value="">-- Select an approved variety --</option>
+                {varieties.map((item) => <option key={item.id} value={item.id}>{item.name}{item.autonym ? ` / ${item.autonym}` : ''}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Orthography</label>
+              <select className="input-field" value={orthographyId} onChange={(e) => setOrthographyId(e.target.value)}>
+                <option value="">-- Select orthography --</option>
+                {orthographies.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.script})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Additional dialect note (optional)</label>
+              <input className="input-field" value={dialect} onChange={(e) => setDialect(e.target.value)} />
             </div>
           </div>
+
+          {!metadata && <p className="mt-4 text-sm text-amber-700 bg-amber-50 p-3 rounded-lg">Collection is paused for this language until an approved variety, orthography, and annotation guideline are activated.</p>}
+          {selectedVariety && !hasProfile && (
+            <div className="mt-4 border border-blue-200 bg-blue-50 p-4 rounded-xl">
+              <h2 className="font-semibold text-blue-900">Complete your language profile</h2>
+              <p className="text-sm text-blue-700 mt-1">This self-report is required to interpret who produced each annotation.</p>
+              <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                {['speaking_proficiency', 'reading_proficiency', 'writing_proficiency'].map((field) => (
+                  <label key={field} className="text-sm capitalize">{field.replace('_', ' ')}
+                    <select className="input-field mt-1" value={profileDraft[field]} onChange={(e) => setProfileDraft({ ...profileDraft, [field]: e.target.value })}>
+                      {['NONE', 'LIMITED', 'WORKING', 'PROFICIENT', 'DOMINANT'].map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </label>
+                ))}
+                <label className="text-sm">Usage frequency
+                  <select className="input-field mt-1" value={profileDraft.usage_frequency} onChange={(e) => setProfileDraft({ ...profileDraft, usage_frequency: e.target.value })}>
+                    {['RARELY', 'MONTHLY', 'WEEKLY', 'DAILY'].map((value) => <option key={value}>{value}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="flex gap-2 items-center mt-3 text-sm"><input type="checkbox" checked={profileDraft.is_first_language} onChange={(e) => setProfileDraft({ ...profileDraft, is_first_language: e.target.checked })} /> This is one of my first languages</label>
+              <button type="button" className="btn-secondary mt-3" onClick={saveProfile}>Save language profile</button>
+            </div>
+          )}
 
           {progress && (
             <div className="mt-4">
@@ -205,6 +326,30 @@ export default function Translate() {
 
             {/* Translation input */}
             <div className="card">
+              {guidelines[0] && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                  Follow <a className="underline font-medium" href={guidelines.find((item) => item.id === guidelineId)?.content_url} target="_blank" rel="noreferrer">{guidelines.find((item) => item.id === guidelineId)?.title}</a>
+                  {' '}version {guidelines.find((item) => item.id === guidelineId)?.version}.
+                </div>
+              )}
+              <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                <label className="text-sm">Outcome
+                  <select className="input-field mt-1" value={annotationOutcome} onChange={(e) => setAnnotationOutcome(e.target.value)}>
+                    <option value="TRANSLATED">Translated</option><option value="UNTRANSLATABLE">Untranslatable</option>
+                    <option value="CULTURALLY_SENSITIVE">Culturally sensitive</option><option value="NEEDS_CONTEXT">Needs context</option>
+                  </select>
+                </label>
+                <label className="text-sm">Register
+                  <select className="input-field mt-1" value={register} onChange={(e) => setRegister(e.target.value)}>
+                    {['GENERAL', 'CASUAL', 'FORMAL', 'TECHNICAL', 'CEREMONIAL', 'OTHER'].map((value) => <option key={value}>{value}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">Confidence
+                  <select className="input-field mt-1" value={uncertainty} onChange={(e) => setUncertainty(e.target.value)}>
+                    <option value="CONFIDENT">Confident</option><option value="SOME_UNCERTAINTY">Some uncertainty</option><option value="NEEDS_DISCUSSION">Needs discussion</option>
+                  </select>
+                </label>
+              </div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Your translation into{' '}
                 <span className="text-liberia-blue capitalize">
@@ -217,8 +362,16 @@ export default function Translate() {
                 placeholder={`Write your ${langs.find((l) => l.value === language)?.label || language} translation here…`}
                 value={translatedText}
                 onChange={(e) => setTranslatedText(e.target.value)}
-                required
+                required={needsText}
               />
+              <label className="block text-sm mt-3">Alternative translation (optional)
+                <textarea className="input-field mt-1" value={alternativeTranslation} onChange={(e) => setAlternativeTranslation(e.target.value)} />
+              </label>
+              <label className="flex gap-2 items-center mt-3 text-sm"><input type="checkbox" checked={containsCodeSwitching} onChange={(e) => setContainsCodeSwitching(e.target.checked)} /> Contains code-switching</label>
+              {containsCodeSwitching && <input className="input-field mt-2" placeholder="Identify the other language and span" value={codeSwitchingNotes} onChange={(e) => setCodeSwitchingNotes(e.target.value)} />}
+              <label className="block text-sm mt-3">Annotation notes {needsText ? '(optional)' : '(required)'}
+                <textarea className="input-field mt-1" value={annotationNotes} onChange={(e) => setAnnotationNotes(e.target.value)} required={!needsText} />
+              </label>
 
               {/* Step 2: Target language recording */}
               <AudioRecorder

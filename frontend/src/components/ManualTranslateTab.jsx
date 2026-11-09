@@ -13,7 +13,6 @@ const DOMAIN_BADGE = {
 const EMPTY_FORM = (firstLang = '') => ({
   source_text: '', domain: 'general', difficulty: 'medium',
   target_language: firstLang, dialect: '', translated_text: '',
-  quality_score: '1.0', is_gold_standard: false,
 });
 
 export default function ManualTranslateTab() {
@@ -55,12 +54,9 @@ export default function ManualTranslateTab() {
     e.preventDefault();
     setSaving(true); setSaveMsg(''); setSaveErr('');
     try {
-      const res = await createManualTranslation({
-        ...form,
-        quality_score: parseFloat(form.quality_score),
-      });
+      const res = await createManualTranslation(form);
       setSaveMsg(res.data.message);
-      setForm(EMPTY);
+      setForm(EMPTY_FORM(MT_LANGUAGES[0]?.value || ''));
       loadHistory();
     } catch (err) {
       setSaveErr(err.response?.data?.error || 'Save failed.');
@@ -84,7 +80,7 @@ export default function ManualTranslateTab() {
         <h1 className="text-2xl font-black text-gray-900 mb-1">My Translations</h1>
         <p className="text-sm text-gray-500">
           Enter any English text and your translation directly — no random sampling.
-          All submissions are auto-validated at the quality score you set.
+          Every submission remains pending until it is independently reviewed.
           This tool is for admin use only.
         </p>
       </div>
@@ -169,27 +165,9 @@ export default function ManualTranslateTab() {
           />
         </div>
 
-        {/* Quality + Gold standard */}
-        <div className="flex flex-wrap items-center gap-6 p-4 bg-gray-50 rounded-xl">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Quality Score</label>
-            <input
-              type="number" min="0" max="1" step="0.01"
-              value={form.quality_score}
-              onChange={setF('quality_score')}
-              className="w-24 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-liberia-red text-center"
-            />
-            <span className="text-xs text-gray-400">0–1 · default 1.0</span>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.is_gold_standard}
-              onChange={setF('is_gold_standard')}
-              className="w-4 h-4 accent-liberia-red rounded"
-            />
-            <span>Mark as <strong>Gold Standard</strong></span>
-          </label>
+        <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800">
+          Saving creates a pending annotation. Quality scores, validation, and gold-reference
+          status must be assigned through the independent review workflow.
         </div>
 
         {/* Feedback */}
@@ -267,6 +245,9 @@ export default function ManualTranslateTab() {
                       )}
                       {t.is_validated && (
                         <span className="text-xs font-bold text-green-600">✓ Validated</span>
+                      )}
+                      {!t.is_validated && (
+                        <span className="text-xs font-bold text-amber-600">Pending review</span>
                       )}
                       {t.quality_score != null && (
                         <span className="text-xs text-gray-500 font-medium">

@@ -1,4 +1,6 @@
 const prisma = require('../utils/prisma');
+const { initialSourceFields } = require('../services/sourceProvenanceService');
+const { reviseTranslation } = require('../services/reviewService');
 
 const DOMAINS     = ['general', 'health', 'legal', 'education', 'news', 'conversational'];
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
@@ -10,7 +12,7 @@ const LANGUAGES   = ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn'
  * Unlike the contributor flow this endpoint:
  *   - Accepts both the source text and the translation in one request
  *   - Finds or creates the English sample automatically
- *   - Marks the translation as validated immediately (quality_score defaults to 1.0)
+ *   - Always saves the translation as pending independent review
  *   - Allows updating the admin's own previous translation for the same sample+language
  */
 async function createManualTranslation(req, res, next) {
@@ -18,7 +20,6 @@ async function createManualTranslation(req, res, next) {
     const {
       source_text, domain, difficulty = 'medium',
       target_language, dialect, translated_text,
-      quality_score = 1.0, is_gold_standard = false,
     } = req.body;
 
     // ── Validate inputs ────────────────────────────────────────────────────────
@@ -31,10 +32,6 @@ async function createManualTranslation(req, res, next) {
     if (!translated_text?.trim())
       return res.status(400).json({ error: 'Translated text is required.' });
 
-    const qs = parseFloat(quality_score);
-    if (isNaN(qs) || qs < 0 || qs > 1)
-      return res.status(400).json({ error: 'quality_score must be a number between 0 and 1.' });
-
     // ── Find or create the English sample ──────────────────────────────────────
     let sample = await prisma.englishSample.findFirst({
       where: { text: source_text.trim() },
@@ -46,13 +43,14 @@ async function createManualTranslation(req, res, next) {
           text:             source_text.trim(),
           domain,
           difficulty:       DIFFICULTIES.includes(difficulty) ? difficulty : 'medium',
-          is_gold_standard: Boolean(is_gold_standard),
+          is_gold_standard: false,
+          ...initialSourceFields({
+            text: source_text.trim(),
+            domain,
+            source: { source_kind: 'MANUAL' },
+            importedBy: req.user.id,
+          }),
         },
-      });
-    } else if (is_gold_standard && !sample.is_gold_standard) {
-      sample = await prisma.englishSample.update({
-        where: { id: sample.id },
-        data:  { is_gold_standard: true },
       });
     }
 
@@ -71,15 +69,12 @@ async function createManualTranslation(req, res, next) {
     const isNew = !existing;
 
     if (existing) {
-      // Update the admin's existing translation for this sample+language
-      translation = await prisma.translation.update({
-        where: { id: existing.id },
-        data:  {
-          translated_text: translated_text.trim(),
-          dialect:         dialect?.trim() || null,
-          is_validated:    true,
-          quality_score:   qs,
-        },
+      translation = await reviseTranslation({
+        translationId: existing.id,
+        contributorId: req.user.id,
+        translatedText: translated_text,
+        dialect,
+        changeReason: 'Manual annotation revised before independent review',
       });
     } else {
       translation = await prisma.translation.create({
@@ -89,8 +84,18 @@ async function createManualTranslation(req, res, next) {
           target_language,
           dialect:         dialect?.trim() || null,
           translated_text: translated_text.trim(),
-          is_validated:    true,
-          quality_score:   qs,
+          is_validated:    false,
+          quality_score:   null,
+          review_state:    'PENDING_REVIEW',
+          current_revision: 1,
+          revisions: {
+            create: {
+              revision_no: 1,
+              translated_text: translated_text.trim(),
+              dialect: dialect?.trim() || null,
+              created_by: req.user.id,
+            },
+          },
         },
       });
 
@@ -106,8 +111,8 @@ async function createManualTranslation(req, res, next) {
       translation,
       updated: !isNew,
       message: isNew
-        ? 'Translation saved and validated.'
-        : 'Existing translation updated.',
+        ? 'Translation saved and sent for independent review.'
+        : 'Existing translation updated and returned to review.',
     });
   } catch (err) {
     next(err);

@@ -7,11 +7,16 @@ jest.mock('../utils/prisma', () => {
     goldStandard: { findFirst: jest.fn() },
     englishSample: { update: jest.fn() },
     contributor: { findUnique: jest.fn(), update: jest.fn() },
+    languageVariety: { findUnique: jest.fn() },
+    orthography: { findUnique: jest.fn() },
+    annotationGuideline: { findUnique: jest.fn() },
+    contributorLanguageProfile: { findUnique: jest.fn() },
   };
   return {
     $transaction: jest.fn((cb) => cb(mockTx)),
     translation: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
     contributor: { findUnique: jest.fn() },
+    consentState: { findFirst: jest.fn() },
     _mockTx: mockTx,
   };
 });
@@ -22,11 +27,17 @@ const { submitTranslation, validateTranslation } = require('../services/translat
 const SAMPLE_ID      = 'sample-uuid';
 const CONTRIBUTOR_ID = 'contrib-uuid';
 const LANGUAGE       = 'kpelle';
+const METADATA = {
+  languageVarietyId: 'variety-uuid',
+  orthographyId: 'orthography-uuid',
+  guidelineId: 'guideline-uuid',
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   prisma._mockTx.$queryRaw.mockReset();
   prisma.contributor.findUnique.mockResolvedValue(null);
+  prisma.consentState.findFirst.mockResolvedValue({ text_contribution: true, target_audio: true, english_audio: true });
 });
 
 // ── submitTranslation ─────────────────────────────────────────────────────────
@@ -36,12 +47,16 @@ describe('submitTranslation — locking logic', () => {
 
   function setupHappyPath(langCount = 0) {
     tx.$queryRaw
-      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false }]) // SELECT … FOR UPDATE
+      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false, source_release_eligible: true }]) // SELECT … FOR UPDATE
       .mockResolvedValueOnce([{ id: SAMPLE_ID, is_locked: false }]);        // UPDATE … RETURNING
     tx.translation.count.mockResolvedValue(langCount);
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
     tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: langCount + 1 >= 3 });
+    tx.languageVariety.findUnique.mockResolvedValue({ id: METADATA.languageVarietyId, name: 'Central Kpelle', status: 'ACTIVE', language: { value: LANGUAGE } });
+    tx.orthography.findUnique.mockResolvedValue({ id: METADATA.orthographyId, variety_id: METADATA.languageVarietyId, status: 'ACTIVE' });
+    tx.annotationGuideline.findUnique.mockResolvedValue({ id: METADATA.guidelineId, variety_id: METADATA.languageVarietyId, orthography_id: METADATA.orthographyId, status: 'ACTIVE', version: '1.0' });
+    tx.contributorLanguageProfile.findUnique.mockResolvedValue({ id: 'profile-uuid' });
   }
 
   test('succeeds when translation count is below MAX (3)', async () => {
@@ -51,6 +66,7 @@ describe('submitTranslation — locking logic', () => {
       sampleId:       SAMPLE_ID,
       targetLanguage: LANGUAGE,
       translatedText: 'Kpelle translation',
+      ...METADATA,
     });
     expect(result.translation.id).toBe('trans-uuid');
     expect(result.lang_count_after).toBe(3);
@@ -64,34 +80,42 @@ describe('submitTranslation — locking logic', () => {
       sampleId:       SAMPLE_ID,
       targetLanguage: LANGUAGE,
       translatedText: 'text',
+      ...METADATA,
     })).rejects.toMatchObject({ status: 404 });
   });
 
   test('throws 409 when language is already at MAX (3)', async () => {
-    tx.$queryRaw.mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false, source_release_eligible: true }]);
     tx.translation.count.mockResolvedValue(3); // already at limit
+    setupHappyPath(3);
     await expect(submitTranslation({
       contributorId:  CONTRIBUTOR_ID,
       sampleId:       SAMPLE_ID,
       targetLanguage: LANGUAGE,
       translatedText: 'text',
+      ...METADATA,
     })).rejects.toMatchObject({ status: 409 });
   });
 
   test('marks sample locked when count reaches MAX after this submission', async () => {
     tx.$queryRaw
-      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false }]) // SELECT FOR UPDATE
+      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false, source_release_eligible: true }]) // SELECT FOR UPDATE
       .mockResolvedValueOnce([{ id: SAMPLE_ID, is_locked: true }]);         // UPDATE RETURNING
     tx.translation.count.mockResolvedValue(2); // langCount=2, so langCount+1=3 >= MAX → lock
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
     tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: true });
+    tx.languageVariety.findUnique.mockResolvedValue({ id: METADATA.languageVarietyId, name: 'Central Kpelle', status: 'ACTIVE', language: { value: LANGUAGE } });
+    tx.orthography.findUnique.mockResolvedValue({ id: METADATA.orthographyId, variety_id: METADATA.languageVarietyId, status: 'ACTIVE' });
+    tx.annotationGuideline.findUnique.mockResolvedValue({ id: METADATA.guidelineId, variety_id: METADATA.languageVarietyId, orthography_id: METADATA.orthographyId, status: 'ACTIVE', version: '1.0' });
+    tx.contributorLanguageProfile.findUnique.mockResolvedValue({ id: 'profile-uuid' });
 
     const result = await submitTranslation({
       contributorId:  CONTRIBUTOR_ID,
       sampleId:       SAMPLE_ID,
       targetLanguage: LANGUAGE,
       translatedText: 'text',
+      ...METADATA,
     });
     expect(result.sample_locked).toBe(true);
   });
@@ -99,18 +123,23 @@ describe('submitTranslation — locking logic', () => {
   test('does NOT increment translation_count on subsequent language submissions (langCount > 0)', async () => {
     // langCount=1 means this language already has 1 translation, so isFirstForLang=false
     tx.$queryRaw
-      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false }])
+      .mockResolvedValueOnce([{ id: SAMPLE_ID, is_gold_standard: false, source_release_eligible: true }])
       .mockResolvedValueOnce([{ id: SAMPLE_ID, is_locked: false }]);
     tx.translation.count.mockResolvedValue(1);
     tx.translation.create.mockResolvedValue({ id: 'trans-uuid' });
     tx.goldStandard.findFirst.mockResolvedValue(null);
     tx.englishSample.update.mockResolvedValue({ id: SAMPLE_ID, is_locked: false });
+    tx.languageVariety.findUnique.mockResolvedValue({ id: METADATA.languageVarietyId, name: 'Central Kpelle', status: 'ACTIVE', language: { value: LANGUAGE } });
+    tx.orthography.findUnique.mockResolvedValue({ id: METADATA.orthographyId, variety_id: METADATA.languageVarietyId, status: 'ACTIVE' });
+    tx.annotationGuideline.findUnique.mockResolvedValue({ id: METADATA.guidelineId, variety_id: METADATA.languageVarietyId, orthography_id: METADATA.orthographyId, status: 'ACTIVE', version: '1.0' });
+    tx.contributorLanguageProfile.findUnique.mockResolvedValue({ id: 'profile-uuid' });
 
     const result = await submitTranslation({
       contributorId:  CONTRIBUTOR_ID,
       sampleId:       SAMPLE_ID,
       targetLanguage: LANGUAGE,
       translatedText: 'text',
+      ...METADATA,
     });
     // Verify the UPDATE SQL was called (we can't inspect SQL args easily, but
     // the transaction completed and returned a result)

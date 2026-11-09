@@ -82,6 +82,124 @@ enum TicketPriority {
   URGENT
 }
 
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ConsentDecision {
+  GRANTED
+  WITHDRAWN
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum SourceKind {
+  LEGACY_UNKNOWN
+  MANUAL
+  SEEDED
+  DATASET_IMPORT
+}
+
+enum CopyrightStatus {
+  UNKNOWN
+  LICENSED
+  PUBLIC_DOMAIN
+  PERMISSION_GRANTED
+  RESTRICTED
+}
+
+enum ResearchReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TranslationReviewState {
+  PENDING_REVIEW
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  ADJUDICATION_REQUIRED
+  RETRACTED
+}
+
+enum ReviewAssignmentStatus {
+  ASSIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReviewDecision {
+  APPROVE
+  REQUEST_CHANGES
+  REJECT
+  ABSTAIN
+}
+
+enum AdjudicationDecision {
+  APPROVE
+  REJECT
+  RETURN_FOR_REVISION
+}
+
+enum ProficiencyLevel {
+  NONE
+  LIMITED
+  WORKING
+  PROFICIENT
+  DOMINANT
+}
+
+enum UsageFrequency {
+  RARELY
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+enum AnnotationRegister {
+  GENERAL
+  CASUAL
+  FORMAL
+  TECHNICAL
+  CEREMONIAL
+  OTHER
+}
+
+enum TranslationUncertainty {
+  CONFIDENT
+  SOME_UNCERTAINTY
+  NEEDS_DISCUSSION
+}
+
+enum AnnotationOutcome {
+  TRANSLATED
+  UNTRANSLATABLE
+  CULTURALLY_SENSITIVE
+  NEEDS_CONTEXT
+}
+
+enum DatasetReleaseStatus {
+  DRAFT
+  PUBLISHED
+  RESTRICTED
+  RETRACTED
+  DEPRECATED
+}
+
+enum DatasetSplit {
+  TRAIN
+  VALIDATION
+  TEST
+}
+
 model Language {
   id         String   @id @default(uuid())
   value      String   @unique
@@ -89,6 +207,14 @@ model Language {
   is_active  Boolean  @default(true)
   sort_order Int      @default(0)
   created_at DateTime @default(now())
+
+  autonym          String?
+  iso639_3         String?
+  glottocode       String?
+  default_script   String?
+  metadata_version String?
+
+  varieties LanguageVariety[]
 
   @@map("languages")
 }
@@ -102,34 +228,84 @@ model EnglishSample {
   translation_count Int        @default(0)
   is_locked         Boolean    @default(false)
   is_gold_standard  Boolean    @default(false)
-  iaa_score         Float? // inter-annotator agreement (0-1), set when locked
+  legacy_iaa_score  Float?     @map("iaa_score") // retained only for migration compatibility
   created_at        DateTime   @default(now())
 
-  translations   Translation[]
-  gold_standards GoldStandard[]
+  // Source and rights provenance. Legacy rows remain ineligible until reviewed.
+  text_hash                 String?              @unique
+  near_duplicate_group      String?
+  source_kind               SourceKind           @default(LEGACY_UNKNOWN)
+  source_dataset            String?
+  source_dataset_version    String?
+  source_record_id          String?
+  source_url                String?
+  source_citation           String?
+  source_license            String?
+  source_license_url        String?
+  copyright_status          CopyrightStatus      @default(UNKNOWN)
+  source_usage_restrictions String?
+  source_release_eligible   Boolean              @default(false)
+  original_text             String?
+  importer_version          String?
+  imported_by               String?
+  imported_at               DateTime?
+  provenance_metadata       Json?
+  specialist_review_status  ResearchReviewStatus @default(PENDING)
+  specialist_reviewed_by    String?
+  specialist_reviewed_at    DateTime?
+  specialist_review_notes   String?
+
+  translations             Translation[]
+  gold_standards           GoldStandard[]
+  surfaceSimilaritySignals SurfaceSimilaritySignal[]
 
   @@index([domain])
   @@index([is_locked])
   @@index([is_gold_standard])
+  @@index([near_duplicate_group])
+  @@index([source_release_eligible])
+  @@index([specialist_review_status])
   @@map("english_samples")
 }
 
 model Translation {
-  id                 String   @id @default(uuid())
-  sample_id          String
-  contributor_id     String
-  target_language    String
-  dialect            String?
-  translated_text    String   @db.Text
-  audio_path         String?  @db.Text
-  english_audio_path String?  @db.Text
-  is_validated       Boolean  @default(false)
-  quality_score      Float?
-  gold_sim_score     Float?
-  created_at         DateTime @default(now())
+  id                           String                 @id @default(uuid())
+  sample_id                    String
+  contributor_id               String
+  target_language              String
+  dialect                      String?
+  translated_text              String                 @db.Text
+  audio_path                   String?                @db.Text
+  english_audio_path           String?                @db.Text
+  is_validated                 Boolean                @default(false)
+  quality_score                Float?
+  gold_sim_score               Float?
+  created_at                   DateTime               @default(now())
+  updated_at                   DateTime               @default(now()) @updatedAt
+  review_state                 TranslationReviewState @default(PENDING_REVIEW)
+  current_revision             Int                    @default(1)
+  language_variety_id          String?
+  orthography_id               String?
+  guideline_id                 String?
+  register                     AnnotationRegister     @default(GENERAL)
+  contains_code_switching      Boolean                @default(false)
+  code_switching_notes         String?
+  uncertainty                  TranslationUncertainty @default(CONFIDENT)
+  annotation_outcome           AnnotationOutcome      @default(TRANSLATED)
+  alternative_translation      String?
+  annotation_notes             String?
+  linguistic_metadata_complete Boolean                @default(false)
 
-  sample      EnglishSample @relation(fields: [sample_id], references: [id])
-  contributor Contributor   @relation(fields: [contributor_id], references: [id])
+  sample            EnglishSample             @relation(fields: [sample_id], references: [id])
+  contributor       Contributor               @relation(fields: [contributor_id], references: [id])
+  revisions         TranslationRevision[]
+  reviewAssignments ReviewAssignment[]
+  reviews           TranslationReview[]
+  adjudications     TranslationAdjudication[]
+  languageVariety   LanguageVariety?          @relation(fields: [language_variety_id], references: [id], onDelete: Restrict)
+  orthography       Orthography?              @relation(fields: [orthography_id], references: [id], onDelete: Restrict)
+  guideline         AnnotationGuideline?      @relation(fields: [guideline_id], references: [id], onDelete: Restrict)
+  releaseItems      DatasetReleaseItem[]
 
   @@unique([sample_id, contributor_id, target_language])
   @@index([sample_id, target_language])
@@ -189,12 +365,21 @@ model Contributor {
 
   created_at DateTime @default(now())
 
-  translations     Translation[]
-  apiKeys          ApiKey[]
-  auditLogs        AuditLog[]         @relation("ActorAuditLogs")
-  supportTickets   SupportTicket[]
-  badges           ContributorBadge[]
-  campaignsCreated Campaign[]
+  translations             Translation[]
+  apiKeys                  ApiKey[]
+  auditLogs                AuditLog[]                   @relation("ActorAuditLogs")
+  supportTickets           SupportTicket[]
+  badges                   ContributorBadge[]
+  campaignsCreated         Campaign[]
+  consentRecords           ConsentRecord[]
+  governanceApprovals      GovernanceApproval[]
+  reviewAssignments        ReviewAssignment[]           @relation("AssignedReviewer")
+  reviewAssignmentsCreated ReviewAssignment[]           @relation("ReviewAssigner")
+  translationReviews       TranslationReview[]
+  translationAdjudications TranslationAdjudication[]
+  languageProfiles         ContributorLanguageProfile[]
+  consentStates            ConsentState[]
+  releasePseudonyms        ReleasePseudonym[]
 
   @@map("contributors")
 }
@@ -342,4 +527,398 @@ model AuditLog {
   @@index([target_id])
   @@index([created_at])
   @@map("audit_logs")
+}
+
+/// A versioned policy or participant-information document. Content is stored
+/// outside the database; the hash makes the exact accepted text auditable.
+model ResearchPolicy {
+  id                 String       @id @default(uuid())
+  policy_key         String
+  version            String
+  title              String
+  content_hash       String
+  content_url        String?
+  status             PolicyStatus @default(DRAFT)
+  requires_reconsent Boolean      @default(true)
+  effective_at       DateTime?
+  retired_at         DateTime?
+  created_by         String?
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
+
+  consentRecords ConsentRecord[]
+  consentStates  ConsentState[]
+
+  @@unique([policy_key, version])
+  @@index([policy_key, status])
+  @@map("research_policies")
+}
+
+/// Append-only consent event. A withdrawal is a new event rather than a
+/// destructive edit, preserving exactly what was agreed to and when.
+model ConsentRecord {
+  id             String          @id @default(uuid())
+  contributor_id String
+  policy_id      String
+  decision       ConsentDecision
+  scopes         Json
+  supersedes_id  String?
+  recorded_at    DateTime        @default(now())
+  reason         String?
+  ip_address     String?
+  user_agent     String?
+
+  contributor Contributor     @relation(fields: [contributor_id], references: [id], onDelete: Restrict)
+  policy      ResearchPolicy  @relation(fields: [policy_id], references: [id], onDelete: Restrict)
+  supersedes  ConsentRecord?  @relation("ConsentHistory", fields: [supersedes_id], references: [id], onDelete: Restrict)
+  revisions   ConsentRecord[] @relation("ConsentHistory")
+
+  @@index([contributor_id, policy_id, recorded_at])
+  @@index([supersedes_id])
+  @@map("consent_records")
+}
+
+/// Materialized effective consent for enforcement in collection and export.
+/// ConsentRecord remains the immutable audit log and is the source of truth.
+model ConsentState {
+  id                String   @id @default(uuid())
+  contributor_id    String
+  policy_id         String
+  text_contribution Boolean  @default(false)
+  target_audio      Boolean  @default(false)
+  english_audio     Boolean  @default(false)
+  model_training    Boolean  @default(false)
+  public_release    Boolean  @default(false)
+  commercial_use    Boolean  @default(false)
+  future_research   Boolean  @default(false)
+  updated_at        DateTime @updatedAt
+
+  contributor Contributor    @relation(fields: [contributor_id], references: [id], onDelete: Cascade)
+  policy      ResearchPolicy @relation(fields: [policy_id], references: [id], onDelete: Restrict)
+
+  @@unique([contributor_id, policy_id])
+  @@index([policy_id, public_release, model_training])
+  @@map("consent_states")
+}
+
+/// Records the human authority and decision behind policies, campaigns, gold
+/// references, and releases. The target remains generic until those resources
+/// receive dedicated immutable models in later phases.
+model GovernanceApproval {
+  id             String           @id @default(uuid())
+  resource_type  String
+  resource_id    String
+  language       String?
+  approver_id    String
+  authority_role String
+  decision       ApprovalDecision
+  notes          String?
+  decided_at     DateTime         @default(now())
+
+  approver Contributor @relation(fields: [approver_id], references: [id], onDelete: Restrict)
+
+  @@index([resource_type, resource_id])
+  @@index([language])
+  @@index([approver_id])
+  @@map("governance_approvals")
+}
+
+model TranslationRevision {
+  id                      String                 @id @default(uuid())
+  translation_id          String
+  revision_no             Int
+  translated_text         String
+  dialect                 String?
+  audio_path              String?
+  english_audio_path      String?
+  guideline_version       String?
+  collection_code         String?
+  change_reason           String?
+  created_by              String
+  created_at              DateTime               @default(now())
+  language_variety_id     String?
+  orthography_id          String?
+  guideline_id            String?
+  register                AnnotationRegister     @default(GENERAL)
+  contains_code_switching Boolean                @default(false)
+  code_switching_notes    String?
+  uncertainty             TranslationUncertainty @default(CONFIDENT)
+  annotation_outcome      AnnotationOutcome      @default(TRANSLATED)
+  alternative_translation String?
+  annotation_notes        String?
+
+  translation Translation @relation(fields: [translation_id], references: [id], onDelete: Cascade)
+
+  @@unique([translation_id, revision_no])
+  @@index([created_by])
+  @@map("translation_revisions")
+}
+
+model ReviewAssignment {
+  id             String                 @id @default(uuid())
+  translation_id String
+  reviewer_id    String
+  revision_no    Int
+  assigned_by    String
+  status         ReviewAssignmentStatus @default(ASSIGNED)
+  is_blind       Boolean                @default(true)
+  assigned_at    DateTime               @default(now())
+  completed_at   DateTime?
+
+  translation Translation @relation(fields: [translation_id], references: [id], onDelete: Cascade)
+  reviewer    Contributor @relation("AssignedReviewer", fields: [reviewer_id], references: [id], onDelete: Restrict)
+  assigner    Contributor @relation("ReviewAssigner", fields: [assigned_by], references: [id], onDelete: Restrict)
+
+  @@unique([translation_id, revision_no, reviewer_id])
+  @@index([reviewer_id, status])
+  @@map("review_assignments")
+}
+
+model TranslationReview {
+  id                       String         @id @default(uuid())
+  translation_id           String
+  revision_no              Int
+  reviewer_id              String
+  decision                 ReviewDecision
+  adequacy                 Int?
+  fluency                  Int?
+  orthography              Int?
+  dialect_fit              Int?
+  cultural_appropriateness Int?
+  audio_intelligibility    Int?
+  error_labels             Json?
+  comments                 String?
+  created_at               DateTime       @default(now())
+
+  translation Translation @relation(fields: [translation_id], references: [id], onDelete: Cascade)
+  reviewer    Contributor @relation(fields: [reviewer_id], references: [id], onDelete: Restrict)
+
+  @@unique([translation_id, revision_no, reviewer_id])
+  @@index([reviewer_id])
+  @@map("translation_reviews")
+}
+
+model TranslationAdjudication {
+  id             String               @id @default(uuid())
+  translation_id String
+  revision_no    Int
+  adjudicator_id String
+  decision       AdjudicationDecision
+  final_score    Float?
+  notes          String
+  created_at     DateTime             @default(now())
+
+  translation Translation @relation(fields: [translation_id], references: [id], onDelete: Cascade)
+  adjudicator Contributor @relation(fields: [adjudicator_id], references: [id], onDelete: Restrict)
+
+  @@unique([translation_id, revision_no])
+  @@index([adjudicator_id])
+  @@map("translation_adjudications")
+}
+
+model SurfaceSimilaritySignal {
+  id              String   @id @default(uuid())
+  sample_id       String
+  target_language String
+  score           Float
+  method          String   @default("character_3gram_jaccard")
+  computed_at     DateTime @default(now())
+
+  sample EnglishSample @relation(fields: [sample_id], references: [id], onDelete: Cascade)
+
+  @@unique([sample_id, target_language, method])
+  @@index([target_language])
+  @@map("surface_similarity_signals")
+}
+
+model LanguageVariety {
+  id            String       @id @default(uuid())
+  language_id   String
+  code          String       @unique
+  name          String
+  autonym       String?
+  dialect_group String?
+  iso639_3      String?
+  glottocode    String?
+  bcp47         String?
+  region        String?
+  description   String?
+  status        PolicyStatus @default(DRAFT)
+  approved_by   String?
+  approved_at   DateTime?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  language            Language                     @relation(fields: [language_id], references: [id], onDelete: Restrict)
+  orthographies       Orthography[]
+  contributorProfiles ContributorLanguageProfile[]
+  guidelines          AnnotationGuideline[]
+  translations        Translation[]
+
+  @@index([language_id, status])
+  @@map("language_varieties")
+}
+
+model Orthography {
+  id          String       @id @default(uuid())
+  variety_id  String
+  code        String       @unique
+  name        String
+  script      String
+  version     String?
+  authority   String?
+  description String?
+  is_default  Boolean      @default(false)
+  status      PolicyStatus @default(DRAFT)
+  approved_by String?
+  approved_at DateTime?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  variety      LanguageVariety       @relation(fields: [variety_id], references: [id], onDelete: Restrict)
+  guidelines   AnnotationGuideline[]
+  translations Translation[]
+
+  @@index([variety_id, status])
+  @@map("orthographies")
+}
+
+model ContributorLanguageProfile {
+  id                   String           @id @default(uuid())
+  contributor_id       String
+  variety_id           String
+  speaking_proficiency ProficiencyLevel
+  reading_proficiency  ProficiencyLevel
+  writing_proficiency  ProficiencyLevel
+  usage_frequency      UsageFrequency
+  age_of_acquisition   Int?
+  place_learned        String?
+  current_use_region   String?
+  literacy_training    String?
+  is_first_language    Boolean          @default(false)
+  self_reported        Boolean          @default(true)
+  verified_by          String?
+  verified_at          DateTime?
+  notes                String?
+  created_at           DateTime         @default(now())
+  updated_at           DateTime         @updatedAt
+
+  contributor Contributor     @relation(fields: [contributor_id], references: [id], onDelete: Cascade)
+  variety     LanguageVariety @relation(fields: [variety_id], references: [id], onDelete: Restrict)
+
+  @@unique([contributor_id, variety_id])
+  @@index([variety_id])
+  @@map("contributor_language_profiles")
+}
+
+model AnnotationGuideline {
+  id             String       @id @default(uuid())
+  variety_id     String
+  orthography_id String?
+  version        String
+  title          String
+  content_hash   String
+  content_url    String
+  status         PolicyStatus @default(DRAFT)
+  effective_at   DateTime?
+  retired_at     DateTime?
+  approved_by    String?
+  approved_at    DateTime?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  variety      LanguageVariety @relation(fields: [variety_id], references: [id], onDelete: Restrict)
+  orthography  Orthography?    @relation(fields: [orthography_id], references: [id], onDelete: Restrict)
+  translations Translation[]
+
+  @@unique([variety_id, orthography_id, version])
+  @@index([variety_id, status])
+  @@map("annotation_guidelines")
+}
+
+model DatasetRelease {
+  id                 String               @id @default(uuid())
+  language           String
+  semantic_version   String
+  status             DatasetReleaseStatus @default(DRAFT)
+  schema_version     String
+  git_commit         String
+  split_algorithm    String
+  split_seed         String
+  split_mode         String
+  manifest_checksum  String?
+  artifact_checksum  String?
+  artifact_url       String?
+  license_key        String
+  inclusion_criteria Json
+  record_count       Int                  @default(0)
+  changelog          String?
+  created_by         String
+  created_at         DateTime             @default(now())
+  published_by       String?
+  published_at       DateTime?
+  restricted_at      DateTime?
+  retracted_at       DateTime?
+  retraction_reason  String?
+
+  items       DatasetReleaseItem[]
+  pseudonyms  ReleasePseudonym[]
+  corrections DatasetCorrection[]
+
+  @@unique([language, semantic_version])
+  @@index([language, status])
+  @@map("dataset_releases")
+}
+
+model DatasetReleaseItem {
+  id                      String       @id @default(uuid())
+  release_id              String
+  translation_id          String
+  translation_revision_no Int
+  source_group            String
+  duplicate_group         String?
+  speaker_pseudonym       String
+  split                   DatasetSplit
+  record_checksum         String
+  record_snapshot         Json
+  created_at              DateTime     @default(now())
+
+  release     DatasetRelease @relation(fields: [release_id], references: [id], onDelete: Restrict)
+  translation Translation    @relation(fields: [translation_id], references: [id], onDelete: Restrict)
+
+  @@unique([release_id, translation_id])
+  @@index([release_id, split])
+  @@index([source_group, split])
+  @@index([speaker_pseudonym, split])
+  @@map("dataset_release_items")
+}
+
+model ReleasePseudonym {
+  id             String   @id @default(uuid())
+  release_id     String
+  contributor_id String
+  pseudonym      String
+  created_at     DateTime @default(now())
+
+  release     DatasetRelease @relation(fields: [release_id], references: [id], onDelete: Restrict)
+  contributor Contributor    @relation(fields: [contributor_id], references: [id], onDelete: Restrict)
+
+  @@unique([release_id, contributor_id])
+  @@unique([release_id, pseudonym])
+  @@map("release_pseudonyms")
+}
+
+model DatasetCorrection {
+  id              String   @id @default(uuid())
+  release_id      String
+  correction_type String
+  description     String
+  affected_ids    Json?
+  created_by      String
+  created_at      DateTime @default(now())
+
+  release DatasetRelease @relation(fields: [release_id], references: [id], onDelete: Restrict)
+
+  @@index([release_id, created_at])
+  @@map("dataset_corrections")
 }

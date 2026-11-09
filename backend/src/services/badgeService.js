@@ -44,7 +44,7 @@ exports.checkAndAward = async (contributorId, { audioPath, isL1, sampleId }) => 
   const since30 = new Date(Date.now() - 30 * 86400000);
   const [totalCount, validatedCount, avgQuality, recent] = await Promise.all([
     prisma.translation.count({ where: { contributor_id: contributorId } }),
-    prisma.translation.count({ where: { contributor_id: contributorId, is_validated: true } }),
+    prisma.translation.count({ where: { contributor_id: contributorId, review_state: 'APPROVED' } }),
     prisma.translation.aggregate({
       where: { contributor_id: contributorId, quality_score: { not: null } },
       _avg: { quality_score: true },

@@ -55,7 +55,9 @@ async function requireAuthOrApiKey(req, res, next) {
     const hash   = crypto.createHash('sha256').update(rawKey).digest('hex');
     const apiKey = await prisma.apiKey.findUnique({
       where:   { key_hash: hash },
-      include: { contributor: { select: { id: true, name: true, is_active: true } } },
+      include: { contributor: { select: {
+        id: true, name: true, is_active: true, role: true, is_admin: true,
+      } } },
     }).catch(() => null);
 
     if (!apiKey || !apiKey.is_active || !apiKey.contributor?.is_active) {
@@ -67,7 +69,12 @@ async function requireAuthOrApiKey(req, res, next) {
 
     req.apiContributor = apiKey.contributor;
     // Normalise so controllers that check req.user still work
-    req.user = { id: apiKey.contributor.id, is_active: true };
+    req.user = {
+      id: apiKey.contributor.id,
+      is_active: true,
+      role: apiKey.contributor.role,
+      is_admin: apiKey.contributor.is_admin,
+    };
     return next();
   }
 

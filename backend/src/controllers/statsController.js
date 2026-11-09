@@ -27,7 +27,7 @@ async function getStats(_req, res, next) {
       prisma.translation.groupBy({ by: ['target_language'], _count: { _all: true } }),
       prisma.translation.groupBy({
         by: ['target_language'],
-        where: { is_validated: true },
+        where: { review_state: 'APPROVED' },
         _count: { _all: true },
       }),
       prisma.translation.aggregate({
@@ -44,7 +44,7 @@ async function getStats(_req, res, next) {
       // Text-only (no audio)
       prisma.translation.count({ where: { audio_path: null } }),
       // Total validated
-      prisma.translation.count({ where: { is_validated: true } }),
+      prisma.translation.count({ where: { review_state: 'APPROVED' } }),
       // Audio count per language
       prisma.translation.groupBy({
         by: ['target_language'],

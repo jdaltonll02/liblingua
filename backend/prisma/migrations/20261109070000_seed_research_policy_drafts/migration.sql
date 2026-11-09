@@ -1,0 +1,6 @@
+INSERT INTO "research_policies" ("id", "policy_key", "version", "title", "content_hash", "content_url", "status", "requires_reconsent", "created_at", "updated_at") VALUES
+('11000000-0000-4000-8000-000000000001', 'governance', '1.0', 'LibLingua Research Governance Policy', 'ee573379b7bf2c7cc742c127ca026822720a38fb630b18c9a1fc7892474742ba', '/research-policies/GOVERNANCE_POLICY_v1.0.md', 'DRAFT', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('11000000-0000-4000-8000-000000000002', 'participant_consent', '1.0', 'LibLingua Adult Participant Information and Consent', '27fcd88096251c416439bdaf45f26cdf7f74fa0371a246d5c6a7e823e5ab4078', '/research-policies/PARTICIPANT_CONSENT_v1.0.md', 'DRAFT', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('11000000-0000-4000-8000-000000000003', 'acceptable_use', '1.0', 'LibLingua Acceptable and Prohibited Use Policy', '7962a0e970bde3385b856abb99c56968c2ea1cba9af89ded25a180f7e2a6f580', '/research-policies/ACCEPTABLE_USE_POLICY_v1.0.md', 'DRAFT', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('11000000-0000-4000-8000-000000000004', 'benefit_sharing', '1.0', 'LibLingua Pilot Benefit-Sharing Policy', '750c8ba0b3d0bb85d3f95fefb31a78e222160014060465c742c38de63b0c827f', '/research-policies/BENEFIT_SHARING_POLICY_v1.0.md', 'DRAFT', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT ("policy_key", "version") DO NOTHING;

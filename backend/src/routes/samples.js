@@ -5,6 +5,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const {
   getRandomSample, getSampleById,
   createSample, bulkCreateSamples, getLanguageProgress, syncFromHuggingFace,
+  reviewSourceProvenance,
 } = require('../controllers/sampleController');
 
 const router = Router();
@@ -24,5 +25,6 @@ router.get('/:id', requireAuth, getSampleById);
 router.post('/', requireAdmin, sampleValidators, validate, createSample);
 router.post('/bulk', requireAdmin, bulkCreateSamples);
 router.post('/sync-huggingface', requireAdmin, syncFromHuggingFace);
+router.patch('/:id/provenance', requireAdmin, reviewSourceProvenance);
 
 module.exports = router;

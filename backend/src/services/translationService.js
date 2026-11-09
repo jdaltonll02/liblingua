@@ -1,7 +1,9 @@
 const prisma = require('../utils/prisma');
 const { ngramSimilarity } = require('../utils/similarity');
 const { checkAndAward } = require('./badgeService');
-const { recordIAAOnLock } = require('./iaaService');
+const { recordSurfaceSimilaritySignal } = require('./surfaceSimilarityService');
+const { validateSubmissionMetadata } = require('./linguisticMetadataService');
+const { assertActiveConsent } = require('./consentService');
 
 const MAX_PER_LANGUAGE         = 3;
 const REPUTATION_INCREASE      = 0.1;
@@ -19,7 +21,16 @@ const QUALITY_REJECT_THRESHOLD = 0.4;
  * The unique index on (sample_id, contributor_id, target_language) is the
  * final backstop against duplicates — P2002 is still caught by the controller.
  */
-async function submitTranslation({ contributorId, sampleId, targetLanguage, dialect, translatedText, audioPath, englishAudioPath }) {
+async function submitTranslation({
+  contributorId, sampleId, targetLanguage, dialect, translatedText, audioPath, englishAudioPath,
+  languageVarietyId, orthographyId, guidelineId, register = 'GENERAL',
+  containsCodeSwitching = false, codeSwitchingNotes, uncertainty = 'CONFIDENT',
+  annotationOutcome = 'TRANSLATED', alternativeTranslation, annotationNotes,
+}) {
+  const requiredConsent = ['text_contribution'];
+  if (audioPath) requiredConsent.push('target_audio');
+  if (englishAudioPath) requiredConsent.push('english_audio');
+  await assertActiveConsent(contributorId, requiredConsent);
   const result = await prisma.$transaction(async (tx) => {
     // Lock the sample row for the duration of this transaction so concurrent
     // submissions for the same (sample, language) are serialized.
@@ -29,6 +40,36 @@ async function submitTranslation({ contributorId, sampleId, targetLanguage, dial
     if (!sample) {
       const err = new Error('Sample not found');
       err.status = 404;
+      throw err;
+    }
+    if (!sample.source_release_eligible) {
+      const err = new Error('This source prompt has not passed provenance and rights review');
+      err.status = 409;
+      throw err;
+    }
+
+    const { variety, guideline } = await validateSubmissionMetadata(tx, {
+      contributorId,
+      targetLanguage,
+      varietyId: languageVarietyId,
+      orthographyId,
+      guidelineId,
+    });
+
+    const cleanedText = translatedText?.trim() || '';
+    if (annotationOutcome === 'TRANSLATED' && !cleanedText) {
+      const err = new Error('translated_text is required when annotation_outcome is TRANSLATED');
+      err.status = 400;
+      throw err;
+    }
+    if (annotationOutcome !== 'TRANSLATED' && !annotationNotes?.trim()) {
+      const err = new Error('annotation_notes are required when the prompt is not translated');
+      err.status = 400;
+      throw err;
+    }
+    if (containsCodeSwitching && !codeSwitchingNotes?.trim()) {
+      const err = new Error('code_switching_notes are required when code-switching is reported');
+      err.status = 400;
       throw err;
     }
 
@@ -43,18 +84,49 @@ async function submitTranslation({ contributorId, sampleId, targetLanguage, dial
 
     // Compute gold standard similarity outside the lock-critical path
     // (read-only, so safe inside or outside the transaction)
-    const goldSimScore = await _computeGoldSimilarity(tx, sample, sampleId, targetLanguage, translatedText);
+    const goldSimScore = annotationOutcome === 'TRANSLATED'
+      ? await _computeGoldSimilarity(tx, sample, sampleId, targetLanguage, cleanedText)
+      : null;
+
+    const linguisticData = {
+      language_variety_id: languageVarietyId,
+      orthography_id: orthographyId,
+      guideline_id: guidelineId,
+      register,
+      contains_code_switching: containsCodeSwitching,
+      code_switching_notes: codeSwitchingNotes?.trim() || null,
+      uncertainty,
+      annotation_outcome: annotationOutcome,
+      alternative_translation: alternativeTranslation?.trim() || null,
+      annotation_notes: annotationNotes?.trim() || null,
+    };
 
     const translation = await tx.translation.create({
       data: {
         sample_id:       sampleId,
         contributor_id:  contributorId,
         target_language: targetLanguage,
-        dialect:         dialect || null,
-        translated_text: translatedText,
+        dialect:         dialect?.trim() || variety.name,
+        translated_text: cleanedText,
         audio_path:         audioPath        || null,
         english_audio_path: englishAudioPath || null,
         gold_sim_score:  goldSimScore,
+        review_state:    'PENDING_REVIEW',
+        current_revision: 1,
+        linguistic_metadata_complete: true,
+        ...linguisticData,
+        revisions: {
+          create: {
+            revision_no: 1,
+            translated_text: cleanedText,
+            dialect: dialect?.trim() || variety.name,
+            audio_path: audioPath || null,
+            english_audio_path: englishAudioPath || null,
+            guideline_version: guideline.version,
+            ...linguisticData,
+            created_by: contributorId,
+          },
+        },
       },
     });
 
@@ -81,7 +153,7 @@ async function submitTranslation({ contributorId, sampleId, targetLanguage, dial
     .catch(() => {});
 
   if (result.sample_locked) {
-    recordIAAOnLock(sampleId, targetLanguage).catch(() => {});
+    recordSurfaceSimilaritySignal(sampleId, targetLanguage).catch(() => {});
   }
 
   return result;

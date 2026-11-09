@@ -53,8 +53,21 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           NODE_ENV: test
         run: npm test -- --coverage
+
+      - name: Validate PostgreSQL schema
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        run: npx prisma validate --schema prisma/schema.prisma
+
+      - name: Validate Hostinger MariaDB schema
+        working-directory: backend
+        env:
+          DATABASE_URL: mysql://test:test@127.0.0.1:3306/test
+        run: npx prisma validate --schema prisma-hostinger/schema.prisma
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

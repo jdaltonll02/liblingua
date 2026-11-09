@@ -35,6 +35,7 @@ async function pickSampleForContributor(contributorId, language) {
     const goldCandidates = await prisma.englishSample.findMany({
       where: {
         is_gold_standard: true,
+        source_release_eligible: true,
         translations: { none: { contributor_id: contributorId, target_language: language } },
       },
       take: 10,
@@ -47,7 +48,10 @@ async function pickSampleForContributor(contributorId, language) {
   // ── 2. Compute per-domain translation counts for this language ───────────
   const countMap = {};
   const translatedSamples = await prisma.translation.findMany({
-    where: { target_language: language, sample: { is_gold_standard: false } },
+    where: {
+      target_language: language,
+      sample: { is_gold_standard: false, source_release_eligible: true },
+    },
     select: { sample: { select: { domain: true } } },
   });
   for (const row of translatedSamples) {
@@ -76,6 +80,7 @@ async function _queryCandidates(contributorId, language, domain) {
   const rows = await prisma.englishSample.findMany({
     where: {
       is_gold_standard: false,
+      source_release_eligible: true,
       ...(domain ? { domain } : {}),
       translations: {
         none: { contributor_id: contributorId, target_language: language },
@@ -101,10 +106,13 @@ async function getLanguageProgress(language) {
   await _assertLanguageExists(language);
 
   const [total, translationGroups] = await Promise.all([
-    prisma.englishSample.count({ where: { is_gold_standard: false } }),
+    prisma.englishSample.count({ where: { is_gold_standard: false, source_release_eligible: true } }),
     prisma.translation.groupBy({
       by: ['sample_id'],
-      where: { target_language: language, sample: { is_gold_standard: false } },
+      where: {
+        target_language: language,
+        sample: { is_gold_standard: false, source_release_eligible: true },
+      },
       _count: { _all: true },
     }),
   ]);
