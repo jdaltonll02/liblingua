@@ -5,7 +5,6 @@ import { useAuth } from '../hooks/useAuth';
 import * as authApi from '../api/auth';
 
 const AGE_GROUPS = [
-  { value: 'under_18', label: 'Under 18' },
   { value: '18_35',    label: '18–35' },
   { value: '36_55',    label: '36–55' },
   { value: '56_plus',  label: '56+' },
@@ -80,6 +79,7 @@ export default function CompleteProfile() {
                     <option key={g.value} value={g.value}>{g.label}</option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">Research participation is open to adults aged 18 or older.</p>
               </Field>
 
               <label className="flex items-center gap-3 cursor-pointer">

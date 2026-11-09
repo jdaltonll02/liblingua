@@ -2,6 +2,7 @@ const { stringify: csvStringify } = require('csv-stringify/sync');
 const prisma = require('../utils/prisma');
 const { resolveExportAccess, hasTier } = require('../services/exportAccessService');
 const { assertGovernanceApprovals } = require('../services/linguisticMetadataService');
+const { ADULT_STORED_AGE_GROUPS } = require('../services/participantEligibilityService');
 
 const LANGUAGES = ['kpelle', 'bassa', 'grebo', 'vai', 'mende', 'loma', 'krahn', 'dan'];
 
@@ -47,7 +48,7 @@ async function getDataset(req, res, next) {
         target_language: language,
         review_state:    'APPROVED',
         linguistic_metadata_complete: true,
-        contributor: { consentStates: { some: {
+        contributor: { age_group: { in: ADULT_STORED_AGE_GROUPS }, consentStates: { some: {
           text_contribution: true, model_training: true, public_release: true,
           policy: { policy_key: 'participant_consent', status: 'ACTIVE' },
         } } },
@@ -178,7 +179,7 @@ async function publishLanguage(req, res, next) {
       target_language: language,
       review_state: 'APPROVED',
       linguistic_metadata_complete: true,
-      contributor: { consentStates: { some: {
+      contributor: { age_group: { in: ADULT_STORED_AGE_GROUPS }, consentStates: { some: {
         text_contribution: true, model_training: true, public_release: true,
         policy: { policy_key: 'participant_consent', status: 'ACTIVE' },
       } } },

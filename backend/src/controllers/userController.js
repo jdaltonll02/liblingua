@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('../utils/prisma');
+const { normaliseAdultAgeGroup } = require('../services/participantEligibilityService');
 const { errors } = require('../utils/errors');
 const logger = require('../utils/logger');
 const { sendInvitationEmail } = require('../services/emailService');
@@ -154,6 +155,8 @@ async function updateUser(req, res, next) {
 
     const updates = {};
     const changes = {};
+
+    if (age_group !== undefined) req.body.age_group = normaliseAdultAgeGroup(age_group);
 
     const UPDATABLE = [
       'name', 'native_language', 'native_dialect', 'region_of_origin', 'age_group',

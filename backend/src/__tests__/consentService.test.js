@@ -7,6 +7,7 @@ jest.mock('../utils/prisma', () => {
     datasetCorrection: { createMany: jest.fn() },
   };
   return {
+    contributor: { findUnique: jest.fn() },
     researchPolicy: { findUnique: jest.fn(), findMany: jest.fn() },
     consentRecord: tx.consentRecord,
     consentState: { findFirst: jest.fn() },
@@ -23,7 +24,10 @@ const {
 } = require('../services/consentService');
 
 describe('consent service', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.contributor.findUnique.mockResolvedValue({ id: 'user-1', age_group: 'age_18_35' });
+  });
 
   test('rejects unknown and empty scopes', () => {
     expect(() => normaliseScopes([])).toThrow(/at least one/i);
@@ -73,5 +77,14 @@ describe('consent service', () => {
       decision: 'GRANTED',
       scopes: ['text_contribution'],
     })).rejects.toThrow(/active policy/i);
+  });
+
+  test('does not allow a legacy under-18 account to grant research consent', async () => {
+    prisma.researchPolicy.findUnique.mockResolvedValue({ id: 'policy-1', policy_key: 'participant_consent', status: 'ACTIVE' });
+    prisma.contributor.findUnique.mockResolvedValue({ id: 'user-1', age_group: 'under_18' });
+    await expect(recordConsentEvent({
+      contributorId: 'user-1', policyId: 'policy-1', decision: 'GRANTED', scopes: ['text_contribution'],
+    })).rejects.toMatchObject({ status: 403 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

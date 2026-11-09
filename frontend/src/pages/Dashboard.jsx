@@ -19,7 +19,6 @@ const DOMAIN_COLORS = {
 };
 
 const AGE_GROUPS = [
-  { value: 'under_18', label: 'Under 18' },
   { value: '18_35',    label: '18–35' },
   { value: '36_55',    label: '36–55' },
   { value: '56_plus',  label: '56+' },
@@ -508,8 +507,10 @@ export default function Dashboard() {
                     <select className="input-field" value={profileForm.age_group}
                       onChange={(e) => setProfileForm((f) => ({ ...f, age_group: e.target.value }))}>
                       <option value="">-- Select --</option>
+                      {profileForm.age_group === 'under_18' && <option value="under_18" disabled>Under 18 — not eligible</option>}
                       {AGE_GROUPS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">Only adults aged 18 or older can grant consent or contribute.</p>
                   </div>
                 </div>
 

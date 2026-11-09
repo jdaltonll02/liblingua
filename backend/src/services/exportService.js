@@ -1,6 +1,7 @@
 const prisma = require('../utils/prisma');
 const crypto = require('crypto');
 const { hasTier } = require('./exportAccessService');
+const { ADULT_STORED_AGE_GROUPS } = require('./participantEligibilityService');
 
 const EXPORT_BATCH = 500; // rows fetched per DB round-trip
 
@@ -247,7 +248,7 @@ const TRANSLATION_INCLUDE = {
 async function* streamTranslationsForExport({ language, validatedOnly, minQuality } = {}) {
   const where = {
     sample: { source_release_eligible: true }, linguistic_metadata_complete: true,
-    contributor: { consentStates: CONSENT_FILTER },
+    contributor: { age_group: { in: ADULT_STORED_AGE_GROUPS }, consentStates: CONSENT_FILTER },
   };
   if (language)      where.target_language = language;
   if (validatedOnly) where.review_state = 'APPROVED';
@@ -272,7 +273,7 @@ async function* streamTranslationsForExport({ language, validatedOnly, minQualit
 async function fetchTranslationsForExport({ language, validatedOnly, minQuality, skip = 0, take = 1000 } = {}) {
   const where = {
     sample: { source_release_eligible: true }, linguistic_metadata_complete: true,
-    contributor: { consentStates: CONSENT_FILTER },
+    contributor: { age_group: { in: ADULT_STORED_AGE_GROUPS }, consentStates: CONSENT_FILTER },
   };
   if (language)      where.target_language = language;
   if (validatedOnly) where.review_state = 'APPROVED';

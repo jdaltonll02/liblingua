@@ -6,13 +6,7 @@ const { signToken, verifyToken } = require('../utils/jwt');
 const { sendVerificationEmail, sendInvitationEmail } = require('../services/emailService');
 const { fileUrl } = require('../middleware/upload');
 const logger = require('../utils/logger');
-
-const AGE_GROUP_MAP = {
-  under_18: 'under_18',
-  '18_35': 'age_18_35',
-  '36_55': 'age_36_55',
-  '56_plus': 'age_56_plus',
-};
+const { normaliseAdultAgeGroup } = require('../services/participantEligibilityService');
 
 const COOKIE_NAME = 'token';
 
@@ -110,7 +104,7 @@ async function issueOAuthSetPasswordEmail(contributor) {
 async function register(req, res, next) {
   try {
     const { name, email, password, native_language, native_dialect, region_of_origin, is_l1_speaker } = req.body;
-    const age_group = AGE_GROUP_MAP[req.body.age_group] || req.body.age_group;
+    const age_group = normaliseAdultAgeGroup(req.body.age_group);
 
     const existing = await prisma.contributor.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already registered' });
@@ -324,7 +318,7 @@ async function resendVerification(req, res, next) {
 async function completeProfile(req, res, next) {
   try {
     const { native_language, native_dialect, region_of_origin, is_l1_speaker } = req.body;
-    const age_group = AGE_GROUP_MAP[req.body.age_group] || req.body.age_group;
+    const age_group = normaliseAdultAgeGroup(req.body.age_group);
 
     const updated = await prisma.contributor.update({
       where: { id: req.user.id },
@@ -348,7 +342,7 @@ async function completeProfile(req, res, next) {
 async function updateProfile(req, res, next) {
   try {
     const { name, native_language, native_dialect, region_of_origin, is_l1_speaker, profession } = req.body;
-    const age_group = req.body.age_group ? (AGE_GROUP_MAP[req.body.age_group] || req.body.age_group) : undefined;
+    const age_group = req.body.age_group ? normaliseAdultAgeGroup(req.body.age_group) : undefined;
 
     const data = {};
     if (name             != null) data.name             = String(name).trim();

@@ -52,7 +52,8 @@ Acceptance: every collection campaign and release points to approved governance 
       model training, commercial use, and future research.
 - [x] Require valid consent before contribution and enforce it during export.
 - [x] Add consent history, withdrawal requests, and participant self-service controls.
-- [ ] Add guardian consent only if approved at Manual Gate 1.
+- [x] Guardian consent is not applicable: Manual Gate 1 approved an adult-only pilot;
+      registration, profile updates, consent grants, submissions, exports, and releases enforce 18+ eligibility.
 
 Acceptance: no contribution or export can bypass consent; withdrawal is covered by tests.
 

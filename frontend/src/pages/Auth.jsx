@@ -5,7 +5,6 @@ import { useAuth } from '../hooks/useAuth';
 import * as authApi from '../api/auth';
 
 const AGE_GROUPS = [
-  { value: 'under_18', label: 'Under 18' },
   { value: '18_35',    label: '18–35' },
   { value: '36_55',    label: '36–55' },
   { value: '56_plus',  label: '56+' },
@@ -435,6 +434,7 @@ function RegisterForm({ setServerError, onSuccess }) {
           <option value="">— Select —</option>
           {AGE_GROUPS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
         </select>
+        <p className="text-xs text-gray-500 mt-1">Research participation is open to adults aged 18 or older.</p>
         {errors.age_group && <p className="text-xs text-red-500 mt-1">{errors.age_group.message}</p>}
       </div>
 

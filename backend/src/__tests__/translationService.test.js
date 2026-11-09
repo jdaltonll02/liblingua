@@ -36,7 +36,7 @@ const METADATA = {
 beforeEach(() => {
   jest.clearAllMocks();
   prisma._mockTx.$queryRaw.mockReset();
-  prisma.contributor.findUnique.mockResolvedValue(null);
+  prisma.contributor.findUnique.mockResolvedValue({ id: CONTRIBUTOR_ID, age_group: 'age_18_35', is_l1_speaker: true });
   prisma.consentState.findFirst.mockResolvedValue({ text_contribution: true, target_audio: true, english_audio: true });
 });
 
@@ -70,6 +70,15 @@ describe('submitTranslation — locking logic', () => {
     });
     expect(result.translation.id).toBe('trans-uuid');
     expect(result.lang_count_after).toBe(3);
+  });
+
+  test('rejects a legacy under-18 contributor before creating a translation', async () => {
+    prisma.contributor.findUnique.mockResolvedValue({ id: CONTRIBUTOR_ID, age_group: 'under_18' });
+    await expect(submitTranslation({
+      contributorId: CONTRIBUTOR_ID, sampleId: SAMPLE_ID, targetLanguage: LANGUAGE,
+      translatedText: 'text', ...METADATA,
+    })).rejects.toMatchObject({ status: 403 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   test('throws 404 when sample not found', async () => {

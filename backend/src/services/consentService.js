@@ -1,4 +1,5 @@
 const prisma = require('../utils/prisma');
+const { assertAdultParticipant } = require('./participantEligibilityService');
 
 const CONSENT_SCOPES = Object.freeze([
   'text_contribution',
@@ -70,6 +71,7 @@ async function recordConsentEvent({
   if (decision === 'GRANTED' && policy.status !== 'ACTIVE') {
     throw new Error('Consent can only be granted against an active policy');
   }
+  if (decision === 'GRANTED') await assertAdultParticipant(contributorId);
 
   return prisma.$transaction(async (tx) => {
     const previous = await tx.consentRecord.findFirst({

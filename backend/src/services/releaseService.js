@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const prisma = require('../utils/prisma');
 const { assertGovernanceApprovals } = require('./linguisticMetadataService');
+const { ADULT_STORED_AGE_GROUPS } = require('./participantEligibilityService');
 
 const SPLIT_ALGORITHM = 'sha256-connected-groups-v1';
 const SCHEMA_VERSION = 'liblingua-release-1.0';
@@ -73,10 +74,13 @@ async function createReleaseCandidate({ language, semanticVersion, splitSeed, sp
       annotation_outcome: 'TRANSLATED',
       linguistic_metadata_complete: true,
       sample: { source_release_eligible: true },
-      contributor: { consentStates: { some: {
-        text_contribution: true, model_training: true, public_release: true,
-        policy: { policy_key: 'participant_consent', status: 'ACTIVE' },
-      } } },
+      contributor: {
+        age_group: { in: ADULT_STORED_AGE_GROUPS },
+        consentStates: { some: {
+          text_contribution: true, model_training: true, public_release: true,
+          policy: { policy_key: 'participant_consent', status: 'ACTIVE' },
+        } },
+      },
     },
     include: {
       sample: true,
@@ -107,6 +111,7 @@ async function createReleaseCandidate({ language, semanticVersion, splitSeed, sp
         inclusion_criteria: {
           review_state: 'APPROVED', source_release_eligible: true,
           linguistic_metadata_complete: true, annotation_outcome: 'TRANSLATED',
+          participant_eligibility: 'ADULT_18_PLUS',
           consent: ['text_contribution', 'model_training', 'public_release'],
         },
         changelog: changelog?.trim() || null,

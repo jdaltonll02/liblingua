@@ -152,7 +152,7 @@ const ENDPOINTS = {
   'dev-auth': [
     { method: 'POST', path: '/api/auth/register', desc: 'Register a new contributor account.',
       auth: false,
-      body: { name: 'string', email: 'string', password: 'string (min 8 chars, upper+lower+digit)', native_language: 'string', region_of_origin: 'string', age_group: 'under_18|18_35|36_55|56_plus', is_l1_speaker: 'boolean' },
+      body: { name: 'string', email: 'string', password: 'string (min 8 chars, upper+lower+digit)', native_language: 'string', region_of_origin: 'string', age_group: '18_35|36_55|56_plus (adults only)', is_l1_speaker: 'boolean' },
       response: { contributor: '{ id, name, email, role, … }', message: 'string' } },
     { method: 'POST', path: '/api/auth/login', desc: 'Log in and receive a session cookie.',
       auth: false,

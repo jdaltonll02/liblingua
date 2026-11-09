@@ -17,7 +17,7 @@ const {
 
 const router = Router();
 
-const AGE_GROUPS = ['under_18', '18_35', '36_55', '56_plus'];
+const AGE_GROUPS = ['18_35', '36_55', '56_plus'];
 
 // ── Password auth ─────────────────────────────────────────────────────────────
 
@@ -90,9 +90,9 @@ router.patch(
     body('native_language').optional().trim().notEmpty(),
     body('native_dialect').optional(),
     body('region_of_origin').optional().trim().notEmpty(),
-    // Empty = unchanged. Accept both the form values (18_35) and the stored enum (age_18_35).
+    // Empty = unchanged. Accept both the form values (18_35) and stored adult enum values.
     body('age_group').optional({ values: 'falsy' })
-      .isIn([...AGE_GROUPS, ...AGE_GROUPS.map((g) => (g === 'under_18' ? g : `age_${g}`))])
+      .isIn([...AGE_GROUPS, ...AGE_GROUPS.map((g) => `age_${g}`)])
       .withMessage(`Age group must be one of: ${AGE_GROUPS.join(', ')}`),
     body('is_l1_speaker').optional(),
   ],

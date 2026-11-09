@@ -4,6 +4,7 @@ const { checkAndAward } = require('./badgeService');
 const { recordSurfaceSimilaritySignal } = require('./surfaceSimilarityService');
 const { validateSubmissionMetadata } = require('./linguisticMetadataService');
 const { assertActiveConsent } = require('./consentService');
+const { assertAdultParticipant } = require('./participantEligibilityService');
 
 const MAX_PER_LANGUAGE         = 3;
 const REPUTATION_INCREASE      = 0.1;
@@ -30,6 +31,7 @@ async function submitTranslation({
   const requiredConsent = ['text_contribution'];
   if (audioPath) requiredConsent.push('target_audio');
   if (englishAudioPath) requiredConsent.push('english_audio');
+  await assertAdultParticipant(contributorId);
   await assertActiveConsent(contributorId, requiredConsent);
   const result = await prisma.$transaction(async (tx) => {
     // Lock the sample row for the duration of this transaction so concurrent
